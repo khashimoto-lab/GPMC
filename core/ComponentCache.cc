@@ -36,6 +36,7 @@ CacheEntryID ComponentCache::createEntryFor(Component &comp, unsigned stack_id) 
 
 	if (cache_bytes_memory_usage_ >= maximum_cache_size_bytes) {
 		deleteEntries();
+		num_cache_reduce_++;
 	}
 
 	assert(cache_bytes_memory_usage_ < maximum_cache_size_bytes);
@@ -123,7 +124,7 @@ bool ComponentCache::requestValueOf(Component &comp, mpz_class &rn) {
 
 			sum_cache_hit_sizes_ += pcomp->num_variables();
 			rn = pcomp->model_count();
-			//pComp->set_creation_time(my_time_);
+			// pcomp->set_creation_time(my_time_);
 			return true;
 		}
 	}

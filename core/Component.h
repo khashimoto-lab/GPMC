@@ -235,7 +235,7 @@ public:
 
 	~PackedComponent() {
 		if (data_)
-			delete data_;
+			free(data_);
 	}
 
 	unsigned data_size() const {
@@ -443,9 +443,9 @@ public:
 
 	// unchecked erase of an entry from entry_base_
 	void eraseEntry(CacheEntryID id) {
-		//    statistics_.cache_bytes_memory_usage_ -= entry_base_[id]->SizeInBytes();
-		//    statistics_.sum_size_cached_components_ -= entry_base_[id]->num_variables();
-		//    statistics_.num_cached_components_--;
+		cache_bytes_memory_usage_ -= entry_base_[id]->SizeInBytes();
+		sum_size_cached_components_ -= entry_base_[id]->num_variables();
+		num_cached_components_--;
 		delete entry_base_[id];
 		entry_base_[id] = nullptr;
 		free_entry_base_slots_.push_back(id);
@@ -470,12 +470,14 @@ public:
 	void printStats() {
 		printf("Cache lookup          : %"PRIu64"\n", num_cache_look_ups_);
 		printf("Cache hit             : %"PRIu64"\n", num_cache_hits_);
+		printf("Cache reduce          : %"PRIu64"\n", num_cache_reduce_);
 	}
 	// --- Added by k-hasimt --- END
 
 private:
 	uint64_t num_cache_hits_ = 0;
 	uint64_t num_cache_look_ups_ = 0;
+	uint64_t num_cache_reduce_ = 0;
 	uint64_t sum_cache_hit_sizes_ = 0;
 	uint64_t num_cached_components_ = 0;
 	uint64_t sum_size_cached_components_ = 0;
@@ -548,6 +550,14 @@ class ComponentManager {
 public:
 	ComponentManager() :
 		components(0), num_try_split(0) {
+	}
+
+	~ComponentManager()
+	{
+		while(comp_stack_.size() > 0){
+			delete comp_stack_.back();
+			comp_stack_.pop_back();
+		}
 	}
 
 	void init(int nvars, int npvars, const vec<CRef>& sclauses,
@@ -720,7 +730,7 @@ PackedComponent::PackedComponent(Component &rComp) {
 
 	v2 = rComp[0];
 	for (i = 1; (v1 = rComp[i]) != var_Undef; i++) {
-		*p |= (v1 - v2) << bitpos;
+		*p |= ((unsigned) (v1 - v2)) << bitpos;
 		bitpos += bits_per_var_diff;
 		hashkey_vars = hashkey_vars * 3 + (v1 - v2);
 		if (bitpos >= _bitsPerBlock) {
@@ -745,7 +755,7 @@ PackedComponent::PackedComponent(Component &rComp) {
 		i = rComp.nVars() + 1;
 		c2 = rComp[i];
 		for (i++; (c1 = rComp[i]) != clid_Undef; i++) {
-			*p |= (c1 - c2) << (bitpos);
+			*p |= ((unsigned) (c1 - c2)) << (bitpos);
 			bitpos += bits_per_clause_diff;
 			hashkey_clauses = hashkey_clauses * 3 + (c1 - c2);
 			if (bitpos >= _bitsPerBlock) {
