@@ -243,9 +243,7 @@ void ComponentManager::searchComponent(Var seed_var, const vec<lbool>& assigns, 
 
 Var ComponentManager::pickBranchVar(const vec<double>& activity)
 {
-	// GPMC uses VSADS, but due to the difference of distributions of
-	// the two kinds of scores (activity and var_frequency),
-	// this version calculates a VSADS score after a simple normalization.
+	// GPMC uses the lexicographical order of var_frequency and activity for choosing a decision var.
 
 	Component& c = topComponent();
 	assert(dl_.back().SplitCompsEnd() == comp_stack_.size());
@@ -254,22 +252,17 @@ Var ComponentManager::pickBranchVar(const vec<double>& activity)
 	Var maxv = var_Undef;
 	double max_score_a = -1;
 	double max_score_f = -1;
-	double max_score = -1;
 
 	int p;
-	for(p = 0; isPVar(c[p]) && c[p] != var_Undef; p++) {
-		double score_a = activity[c[p]];
-		double score_f = var_frequency_[c[p]];
-		if(score_a > max_score_a) 	max_score_a = score_a;
-		if(score_f > max_score_f)   max_score_f = score_f;
-	}
-
 	for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
-		// ToDo: optimize weights
-		double score = 1.25*(1+var_frequency_[c[p]])/(1+max_score_f)
-		                        		   + (1+activity[c[p]])/(1+max_score_a);
-		if( score > max_score ){
-			max_score = score;
+		double score_f = var_frequency_[c[p]];
+		double score_a = activity[c[p]];
+		if( score_f > max_score_f) {
+			max_score_f = score_f;
+			max_score_a = score_a;
+			maxv = c[p];
+		} else if ( score_f == max_score_f && score_a > max_score_a) {
+			max_score_a = score_a;
 			maxv = c[p];
 		}
 	}
