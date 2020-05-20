@@ -12,7 +12,7 @@ using namespace GPMC;
 
 static const char* _mc = "GPMC -- COUNTER";
 
-static IntOption  opt_backjumping (_mc, "bj", "Controls backjumping (0=off, 1=limited, 2=full)", 1, IntRange(0,2));
+static IntOption  opt_backjumping (_mc, "bj", "Controls backjumping (0=off, 1=limited, 2=full)", 0, IntRange(0,2));
 static BoolOption opt_ibcp        (_mc, "ibcp", "Use implict BCP", false);
 static BoolOption opt_presat      (_mc, "presat", "SAT solving as preprocessing", true);
 
