@@ -50,7 +50,7 @@ static void readClause(B& in, Solver& S, vec<Lit>& lits) {
 }
 
 // --- Added by k-hasimt --- BEGIN
-// Read projection vars  :  e.g., "cr 1 2 3 ... 0" before "p cnf"
+// Read projection vars  :  e.g., "vp 1 2 3 ... 0"
 template<class B, class Solver>
 static void readProjVars(B& in, Solver&S) {
 	int     parsed_var;
@@ -68,41 +68,45 @@ static void parse_DIMACS_main(B& in, Solver& S) {
     vec<Lit> lits;
     int vars    = 0;
     int clauses = 0;
+    int pvars   = 0;
     int cnt     = 0;
     for (;;){
         skipWhitespace(in);
         if (*in == EOF) break;
         else if (*in == 'p'){
-            if (eagerMatch(in, "p cnf")){
+            if (eagerMatch(in, "p pcnf")){
                 vars    = parseInt(in);
                 clauses = parseInt(in);
+                pvars   = parseInt(in);
                 // SATRACE'06 hack
                 // if (clauses > 4000000)
                 //     S.eliminate(true);
             }else{
-                printf("PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
+                printf("c PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
             }
         }        
 	// --- Added by k-hasimt --- BEGIN
-        else if (*in == 'c'){
-            if (eagerMatch(in, "cr")){
+        else if (*in == 'v'){
+            if (eagerMatch(in, "vp")){
                 readProjVars(in, S);
             }
             else
             	skipLine(in);
         // } else if (*in == 'c' || *in == 'p')
         // --- Added by k-hasimt --- END
-        } else if (*in == 'p')
+        } else if (*in == 'c')
             skipLine(in);
         else{
             cnt++;
             readClause(in, S, lits);
             S.addClause_(lits); }
     }
-    if (vars != S.nVars())
-        fprintf(stderr, "WARNING! DIMACS header mismatch: wrong number of variables.\n");
+    if (vars < S.nVars())
+        printf("c WARNING! DIMACS header mismatch: wrong number of variables.\n");
     if (cnt  != clauses)
-        fprintf(stderr, "WARNING! DIMACS header mismatch: wrong number of clauses.\n");
+        printf("c WARNING! DIMACS header mismatch: wrong number of clauses.\n");
+    if (pvars != S.nPVars())
+    	printf("c WARNING! DIMACS header mismatch: wrong number of important variables.\n");
 
     S.registerAsPVar(S.nVars(), false); // Added by k-hasimt  (Assertion:  S.ispvar.size() == nVars()"+1")
 

@@ -23,9 +23,8 @@ void ComponentCache::init(int cachesize) {
 	maximum_cache_size_bytes = (int64_t) cachesize * 1048576;
 
 #ifdef DEBUG
-	cout << "Cache size:\t"
-			<< maximum_cache_size_bytes / 1048576 << " MB" << endl
-			<< endl;
+	cout << "c Cache size:\t"
+			<< maximum_cache_size_bytes / 1048576 << " MB" << endl;
 #endif
 	recompute_bytes_memory_usage();
 }
@@ -179,7 +178,7 @@ bool ComponentCache::deleteEntries() {
 	num_cached_components_ = entry_base_.size();
 	cache_bytes_memory_usage_ = recompute_bytes_memory_usage();
 #ifdef DEBUG
-	cout << "Cache reduced to size " << recompute_bytes_memory_usage() / 1000000 << "MB" << endl;
+	cout << "c Cache reduced to size " << recompute_bytes_memory_usage() / 1000000 << "MB" << endl;
 	//cout << " \t entries: "<< entry_base_.size() - free_entry_base_slots_.size()<< endl;
 #endif
 	return true;

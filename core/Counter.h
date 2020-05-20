@@ -27,7 +27,7 @@ public:
 	void printStatsOfCM();		// Print stats of the component manager.
 
 	void clearCache() { cmpmgr.cache().deleteallentries(); }
-	void initCalcUpperBound(Counter& S);
+	// void initCalcUpperBound(Counter& S);
 
 	void toDimacsRaw();			// For debug: Print the current formula.
 
@@ -46,11 +46,11 @@ public:
 	bool ibcp;
 	bool presat;
 
-	bool hasThreshold;
-	mpz_class norma;
-
-	bool postprocess;
-	bool stopping;
+//	bool hasThreshold;
+//	mpz_class norma;
+//
+//	bool postprocess;
+//	bool stopping;
 
 protected:
 	enum btStateT {

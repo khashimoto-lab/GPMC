@@ -89,34 +89,32 @@ void printStats(Counter& solver)
 	// printf("restarts              : %"PRIu64" (%"PRIu64" conflicts in avg)\n", solver.starts,(solver.starts>0 ?solver.conflicts/solver.starts : 0));
 	// printf("blocked restarts      : %"PRIu64" (multiple: %"PRIu64") \n", solver.nbstopsrestarts,solver.nbstopsrestartssame);
 	// printf("last block at restart : %"PRIu64"\n",solver.lastblockatrestart);
-	printf("nb ReduceDB           : %lld\n", solver.nbReduceDB);
-	printf("nb removed Clauses    : %lld\n", solver.nbRemovedClauses);
-	printf("nb learnts DL2        : %lld\n", solver.nbDL2);
-	printf("nb learnts size 2     : %lld\n", solver.nbBin);
-	printf("nb learnts size 1     : %lld\n", solver.nbUn);
+	printf("c nb ReduceDB           : %lld\n", solver.nbReduceDB);
+	printf("c nb removed Clauses    : %lld\n", solver.nbRemovedClauses);
+	printf("c nb learnts DL2        : %lld\n", solver.nbDL2);
+	printf("c nb learnts size 2     : %lld\n", solver.nbBin);
+	printf("c nb learnts size 1     : %lld\n", solver.nbUn);
 
-	printf("conflicts             : %-12"PRIu64"   (%.0f /sec)\n", solver.conflicts   , solver.conflicts   /cpu_time);
-	printf("decisions             : %-12"PRIu64"   (%4.2f %% random) (%.0f /sec)\n", solver.decisions, (float)solver.rnd_decisions*100 / (float)solver.decisions, solver.decisions   /cpu_time);
-	printf("propagations          : %-12"PRIu64"   (%.0f /sec)\n", solver.propagations, solver.propagations/cpu_time);
-	printf("conflict literals     : %-12"PRIu64"   (%4.2f %% deleted)\n", solver.tot_literals, (solver.max_literals - solver.tot_literals)*100 / (double)solver.max_literals);
+	printf("c conflicts             : %-12"PRIu64"   (%.0f /sec)\n", solver.conflicts   , solver.conflicts   /cpu_time);
+	printf("c decisions             : %-12"PRIu64"   (%4.2f %% random) (%.0f /sec)\n", solver.decisions, (float)solver.rnd_decisions*100 / (float)solver.decisions, solver.decisions   /cpu_time);
+	printf("c propagations          : %-12"PRIu64"   (%.0f /sec)\n", solver.propagations, solver.propagations/cpu_time);
+	printf("c conflict literals     : %-12"PRIu64"   (%4.2f %% deleted)\n", solver.tot_literals, (solver.max_literals - solver.tot_literals)*100 / (double)solver.max_literals);
 	// printf("nb reduced Clauses    : %lld\n",solver.nbReducedClauses);
 
 	// --- Added by k-hasimt --- BEGIN
-	printf("SAT solves (component): %"PRIu64"\n", solver.solves);
+	printf("c SAT solves (component): %"PRIu64"\n", solver.solves);
 	// printf("avg. SATsolve restarts: %4.2f\n", (float)solver.starts / (float)solver.solves);
-	printf("backjump mode         : %d\n", solver.backjumping);
-	printf("backjumps(total)      : %d\n", solver.nbackjumps);
-	printf("         (limited)    : %d\n", solver.nbackjumpstolim);
-	printf("presat                : %s\n", solver.presat?"on":"off");
-	printf("ibcp                  : %s\n", solver.ibcp?"on":"off");
-	printf("hasThreshold          : %s\n", solver.hasThreshold?"on":"off");
-	printf("postprocess           : %s\n", solver.postprocess?"on":"off");
+	printf("c backjump mode         : %d\n", solver.backjumping);
+	printf("c backjumps(total)      : %d\n", solver.nbackjumps);
+	printf("c          (limited)    : %d\n", solver.nbackjumpstolim);
+	printf("c presat                : %s\n", solver.presat?"on":"off");
+	printf("c ibcp                  : %s\n", solver.ibcp?"on":"off");
 
 	solver.printStatsOfCM();
 	// --- Added by k-hasimt --- END
 
-	if (mem_used != 0) printf("Memory used           : %.2f MB\n", mem_used);
-	// printf("CPU time              : %g s\n", cpu_time);
+	if (mem_used != 0) printf("c Memory used           : %.2f MB\n", mem_used);
+	// printf("c CPU time              : %g s\n", cpu_time);
 }
 
 
@@ -129,30 +127,15 @@ static Counter* solver;
 // destructors and may cause deadlocks if a malloc/free function happens to be running (these
 // functions are guarded by locks for multithreaded use).
 static void SIGINT_exit(int signum) {
-	printf("\n"); printf("*** INTERRUPTED *** by signal %d\n", signum);  // "signal" added by k-hasimt
+	printf("\n"); printf("c *** INTERRUPTED *** by signal %d\n", signum);  // "signal" added by k-hasimt
 
-	// --- Added by k-hasimt --- BEGIN
-	if(solver->postprocess && !solver->stopping && (signum == 2 || signum == 15)){
-		solver->stopping = true;
-		printf("CPU time              : %g s\n", cpuTime());
-		printf("*** INTERRUPTED ***\n");
-		printf("Start post-processing...");
-		fflush(stdout);
-		signal(SIGTERM, SIG_IGN);
-		signal(SIGINT, SIG_IGN);
-		signal(SIGTERM, SIGINT_exit);
-		signal(SIGINT, SIGINT_exit);
+	if (solver->verbosity_c > 0){
+		printStats(*solver);
+		printf("c CPU time              : %g s\n", cpuTime());
+		printf("c\n"); printf("c *** INTERRUPTED ***\n");
 	}
-	// --- Added by k-hasimt --- END
-	else {
-		if (solver->verbosity_c > 0){
-			printStats(*solver);
-			printf("CPU time              : %g s\n", cpuTime());
-			printf("\n"); printf("*** INTERRUPTED ***\n");
-		}
-		fflush(stdout);
-		_exit(1); 
-	}
+	fflush(stdout);
+	_exit(1);
 }
 
 int availableRAMSize(int cachesize){
@@ -165,7 +148,7 @@ int availableRAMSize(int cachesize){
 	int maximum_cache_size = cachesize;
 
 	if (cachesize <= 0 || free_ram <= 0) {
-		printf("Not enough memory to run.\n");
+		printf("c Not enough memory to run.\n");
 		exit(0);
 	}
 
@@ -200,21 +183,16 @@ int main(int argc, char** argv)
 #endif
 		// Extra options:
 		//
-		// IntOption    verb("MAIN", "verb",   "Verbosity level (0=silent, 1=some, 2=more).", 1, IntRange(0, 2));
-		IntOption    verb("GPMC -- MAIN", "verb",   "Verbosity level (0=silent, 1=some).", 1, IntRange(0, 1));
-		// BoolOption   mod("MAIN", "model",   "show model.", false);
+		IntOption    verb("GPMC -- MAIN", "verb",   "Verbosity level (0=silent, 1=some).", 0, IntRange(0, 1));
 		IntOption    vv("MAIN", "vv",   "Verbosity every vv conflicts", 10000, IntRange(1,INT32_MAX));
 		IntOption    cpu_lim("MAIN", "cpu-lim","Limit on CPU time allowed in seconds.\n", INT32_MAX, IntRange(0, INT32_MAX));
 		IntOption    mem_lim("MAIN", "mem-lim","Limit on memory usage in megabytes.\n", INT32_MAX, IntRange(0, INT32_MAX));
 
 		IntOption  opt_cachesize ("GPMC -- MAIN", "cs", "Maximum component cache size (MB) (not strict)", 4000, IntRange(1, INT32_MAX));
-		StringOption opt_threshold ("GPMC -- MAIN", "upto", "Stop when it finds #models >= threshold. An input threshold should be a natural number.");
-		BoolOption opt_postprocess ("GPMC -- MAIN", "post", "Post Processing", false);
-		BoolOption opt_compUpBnd ("GPMC -- MAIN", "compUpBnd", "Compute an upper bound. The result bound is sound but may be trivial in many cases.", false);
 
 		parseOptions(argc, argv, true);
 
-		Counter S, Spo;
+		Counter S;
 		double initial_time = cpuTime();
 
 		S.verbosity_c = verb;
@@ -222,18 +200,6 @@ int main(int argc, char** argv)
 		S.verbEveryConflicts = vv;
 		S.showModel = false; // mod;
 		S.cachesize = availableRAMSize(opt_cachesize);
-
-		S.hasThreshold = (opt_threshold != NULL);
-		if(S.hasThreshold) {
-			S.norma = opt_threshold;
-			if(S.norma <= 0){
-				fprintf(stderr, "Invalid argument: -upto=<num>: num should be a positive natural number > 0.\n");
-				exit(1);
-			}
-		}
-		else
-			S.norma = 0;
-		mpz_class norma_orig = S.norma;
 
 		solver = &S;
 		// Use signal handlers that forcibly quit until the solver will be able to respond to
@@ -250,7 +216,7 @@ int main(int argc, char** argv)
 			if (rl.rlim_max == RLIM_INFINITY || (rlim_t)cpu_lim < rl.rlim_max){
 				rl.rlim_cur = cpu_lim;
 				if (setrlimit(RLIMIT_CPU, &rl) == -1)
-					printf("WARNING! Could not set resource limit: CPU-time.\n");
+					printf("c WARNING! Could not set resource limit: CPU-time.\n");
 			} }
 
 		// Set limit on virtual memory:
@@ -261,62 +227,64 @@ int main(int argc, char** argv)
 			if (rl.rlim_max == RLIM_INFINITY || new_mem_lim < rl.rlim_max){
 				rl.rlim_cur = new_mem_lim;
 				if (setrlimit(RLIMIT_AS, &rl) == -1)
-					printf("WARNING! Could not set resource limit: Virtual memory.\n");
+					printf("c WARNING! Could not set resource limit: Virtual memory.\n");
 			} }
 
+		/*
 		if (argc == 1)
-			printf("Reading from standard input... Use '--help' for help.\n");
+			printf("c Reading from standard input... Use '--help' for help.\n");
 
 		gzFile in = (argc == 1) ? gzdopen(0, "rb") : gzopen(argv[1], "rb");
 		if (in == NULL)
-			fprintf(stderr, "ERROR! Could not open file: %s\n", argc == 1 ? "<stdin>" : argv[1]), exit(1);
-
+			fprintf(stderr, "c ERROR! Could not open file: %s\n", argc == 1 ? "<stdin>" : argv[1]), exit(1);
+		 */
+		// This version does not allow users to specify an input file as an argument.
+		// It accepts cnf only from stdin.
+		gzFile in = gzdopen(0, "rb");
+		if (in == NULL)
+			fprintf(stderr, "c ERROR! Could not open file: <stdin>\n"), exit(1);
 		parse_DIMACS(in, S);
 		gzclose(in);
 
 		double parsed_time = cpuTime();
 		if (S.verbosity_c > 0){
-			printf("===========================[ Problem Statistics ]==============================\n");
-			printf("|\n");
-			printf("|  Number of variables:  %12d\n", S.nVars());
-			printf("|  Number of clauses:    %12d\n", S.nClauses());
-			printf("|  Number of proj vars:  %12d\n", S.nPVars());
-			if(S.hasThreshold)
-				gmp_printf("|  Threshold(upto):      %12Zd\n", norma_orig.get_mpz_t());
-			printf("|  Parse time:           %12.2f s\n", parsed_time - initial_time);
-			printf("|  \n");
+			printf("c ===========================[ Problem Statistics ]==============================\n");
+			printf("c\n");
+			printf("c  Number of variables:  %12d\n", S.nVars());
+			printf("c  Number of clauses:    %12d\n", S.nClauses());
+			printf("c  Number of proj vars:  %12d\n", S.nPVars());
+			printf("c  Parse time:           %12.2f s\n", parsed_time - initial_time);
+			printf("c  \n");
 
-			printf("|  Compacting Formula...");
+			printf("c  Compacting Formula...");
 			fflush(stdout);
 		}
 		if(!S.simplifyMC()){
 			// if (res != NULL) fprintf(res, "UNSAT\n"), fclose(res);
 			if (S.verbosity_c > 0){
-				printf("done\n===============================================================================\n");
-				printf("Solved by simplification\n");
+				printf("done\nc ===============================================================================\n");
+				printf("c Solved by simplification\n");
 				printStats(S);
-				printf("\n"); }
-			printf("UNSATISFIABLE\n");
-			printf("#Projected Models     : 0\n");fflush(stdout);
+				printf("c\n"); }
+			// printf("c UNSATISFIABLE\n");
+			printf("c CPU time              : %g s\n", cpuTime());
+			printf("s pmc 0\n");fflush(stdout);
 			exit(0); // exit(20);
 		}
 		if (S.verbosity_c > 0){
 			printf("done\n");
-			printf("|  Number of variables:  %12d\n", S.nVars());
-			printf("|  Number of clauses:    %12d\n", S.nClauses());
-			printf("|  Number of proj vars:  %12d (total)\n", S.nPVars()+S.nIsoPVars());
-			printf("|                        %12d (not isolated)\n", S.nPVars());
-			printf("|                        %12d (isolated)\n", S.nIsoPVars());
-			printf("|\n\n");
-			printf("Start counting...");
+			printf("c  Number of variables:  %12d\n", S.nVars());
+			printf("c  Number of clauses:    %12d\n", S.nClauses());
+			printf("c  Number of proj vars:  %12d (total)\n", S.nPVars()+S.nIsoPVars());
+			printf("c                        %12d (not isolated)\n", S.nPVars());
+			printf("c                        %12d (isolated)\n", S.nIsoPVars());
+			printf("c\nc\n");
+			printf("c Start counting...");
 			fflush(stdout);
 		}
 
 
 		if(S.nVars() != 0){
-			if(S.nIsoPVars() > 0 && S.hasThreshold)
-				mpz_cdiv_q_2exp(S.norma.get_mpz_t (), S.norma.get_mpz_t (), S.nIsoPVars());
-			S.postprocess = opt_postprocess;
 			S.countModels();
 		}
 		else{
@@ -325,79 +293,19 @@ int main(int argc, char** argv)
 		}
 
 		if (S.verbosity_c > 0){
-			printf("done\n\n"); printStats(S); printf("\n");
+			printf("done\nc\n"); printStats(S); printf("c\n");
 		}
 
-		long int exp;
-		double significand;
+		printf("c CPU time              : %g s\n", cpuTime());
+		gmp_printf("s pmc %Zd\n", S.npmodels.get_mpz_t());
+		fflush(stdout);
 
-		if(!((S.hasThreshold && S.npmodels >= norma_orig) || S.stopping)) {
-			// Exact number is found
-			gmp_printf("#Projected Models     = %Zd\n", S.npmodels.get_mpz_t());
-			significand = mpz_get_d_2exp(&exp, S.npmodels.get_mpz_t());
-			if(exp > 64)
-				printf("                      ~= %lf * 2^%ld\n", significand, exp);
-			printf("CPU time              : %g s\n", cpuTime());
-			fflush(stdout);
-		}
-		else{
-			// Exact number is not found
-			mpz_class upperbound;
-			if(opt_compUpBnd){	// Try to compute an upper bound
-				printf("Computing a rough upper bound...");fflush(stdout);
-				S.clearCache();
-
-				Spo.verbosity_c = 0;
-				Spo.postprocess = true;
-				Spo.stopping = false;
-				Spo.cachesize = S.cachesize;
-				solver = &Spo;
-
-				Spo.initCalcUpperBound(S);
-
-				if(Spo.nClauses() != 0){
-					upperbound = 1;
-					mpz_mul_2exp(upperbound.get_mpz_t (), upperbound.get_mpz_t (), S.nPVars()+S.nIsoPVars());
-
-					if(Spo.simplifyMC()){
-						if(Spo.nVars() != 0)
-							Spo.countModels();
-						else {
-							Spo.npmodels = 1;
-							mpz_mul_2exp(Spo.npmodels.get_mpz_t (), Spo.npmodels.get_mpz_t (), Spo.nIsoPVars());
-						}
-						mpz_mul_2exp(Spo.npmodels.get_mpz_t (), Spo.npmodels.get_mpz_t (), S.nIsoPVars());
-						upperbound -= Spo.npmodels;
-					}
-				}
-				printf("done\n\n");
-			}
-			// Lower bound
-			gmp_printf("#Projected Models     >= %Zd\n", S.npmodels.get_mpz_t());
-			significand = mpz_get_d_2exp(&exp, S.npmodels.get_mpz_t());
-			if(exp > 64)
-				printf("                      ~= %lf * 2^%ld\n", significand, exp);
-
-			// Upper bound
-			if(opt_compUpBnd){
-				if(Spo.nClauses() == 0 || Spo.npmodels == 0)
-					printf("#Projected Models     <= 2^%ld\n", S.nPVars()+S.nIsoPVars());
-				else{
-					gmp_printf("#Projected Models     <= %Zd\n", upperbound.get_mpz_t());
-					significand = mpz_get_d_2exp(&exp, upperbound.get_mpz_t());
-					if(exp > 50)
-						printf("                      ~= %lf * 2^%ld\n", significand, exp);
-				}
-			}
-			printf("CPU time              : %g s\n", cpuTime());
-			fflush(stdout);
-		}
 	} catch (const std::invalid_argument&) {
-		printf("Invalid argument\n");
+		printf("c Invalid argument\n");
 		exit(0);
 	} catch (OutOfMemoryException&){
 		printf("c ===================================================================================================\n");
-		printf("INDETERMINATE\n");
+		printf("c INDETERMINATE\n");
 		exit(0);
 	}
 }

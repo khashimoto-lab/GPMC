@@ -6,7 +6,7 @@ using namespace GPMC;
 
 #define CACHE
 
-void ComponentManager::init(int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca, int cachesize, bool hasThreshold, mpz_class norma){
+void ComponentManager::init(int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca, int cachesize){
 	vec< vec<Var> > binlinks(nvars);
 	vec< vec<ClID> > occ(nvars);
 
@@ -59,8 +59,6 @@ void ComponentManager::init(int nvars, int npvars, const vec<CRef>& sclauses, co
 	CachedComponent::adjustPackSize(nvars, clauses_.size());
 #endif
 
-	hasThreshold_ = hasThreshold;
-	norma_ = norma;
 	initComponentStack(nvars, clauses_.size());
 	initDecisionStack();
 
@@ -88,7 +86,7 @@ void ComponentManager::initComponentStack(int nvars, int nlongcls) {
 void ComponentManager::initDecisionStack()
 {
 	dl_.clear();
-	dl_.push_back(Decision(0,0,hasThreshold_,norma_));
+	dl_.push_back(Decision(0,0));
 	dl_.back().changeBranch();
 }
 
