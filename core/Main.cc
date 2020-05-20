@@ -1,12 +1,36 @@
 /*****************************************************************************************[Main.cc]
  *
- * GPMC -- 2017-2018, Kenji Hashimoto, Ryosuke Suzuki (Nagoya University, Japan)
+ * GPMC -- Copyright (c) 2017-2020, Kenji Hashimoto (Nagoya University, Japan)
  *
 
-GPMC sources are based on Glucose 3.0 (see below copyrights) and SharpSAT 12.08.1.
+GPMC sources are based on Glucose 3.0 and SharpSAT 12.08.1.
 We will follow the permissions and copyrights of them.
 
+-----------------------------------------------------------
+
  * SharpSAT https://sites.google.com/site/marcthurley/sharpsat
+
+MIT License
+
+Copyright (c) 2019 marcthurley
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 -----------------------------------------------------------
 
@@ -203,8 +227,8 @@ int main(int argc, char** argv)
 		if(S.hasThreshold) {
 			S.norma = opt_threshold;
 			if(S.norma <= 0){
-				printf("Invalid argument: -upto=<num>: num should be a positive natural number > 0.\n");
-				exit(0);
+				fprintf(stderr, "Invalid argument: -upto=<num>: num should be a positive natural number > 0.\n");
+				exit(1);
 			}
 		}
 		else
@@ -245,7 +269,7 @@ int main(int argc, char** argv)
 
 		gzFile in = (argc == 1) ? gzdopen(0, "rb") : gzopen(argv[1], "rb");
 		if (in == NULL)
-			printf("ERROR! Could not open file: %s\n", argc == 1 ? "<stdin>" : argv[1]), exit(1);
+			fprintf(stderr, "ERROR! Could not open file: %s\n", argc == 1 ? "<stdin>" : argv[1]), exit(1);
 
 		parse_DIMACS(in, S);
 		gzclose(in);
@@ -274,7 +298,7 @@ int main(int argc, char** argv)
 				printf("\n"); }
 			printf("UNSATISFIABLE\n");
 			printf("#Projected Models     : 0\n");fflush(stdout);
-			exit(20);
+			exit(0); // exit(20);
 		}
 		if (S.verbosity_c > 0){
 			printf("done\n");
