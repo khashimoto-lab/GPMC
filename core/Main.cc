@@ -127,14 +127,13 @@ static Counter* solver;
 // destructors and may cause deadlocks if a malloc/free function happens to be running (these
 // functions are guarded by locks for multithreaded use).
 static void SIGINT_exit(int signum) {
-	printf("\n"); printf("c *** INTERRUPTED *** by signal %d\n", signum);  // "signal" added by k-hasimt
-
 	if (solver->verbosity_c > 0){
+		printf("\n"); printf("c *** INTERRUPTED *** by signal %d\n", signum);  // "signal" added by k-hasimt
 		printStats(*solver);
 		printf("c CPU time              : %g s\n", cpuTime());
 		printf("c\n"); printf("c *** INTERRUPTED ***\n");
+		fflush(stdout);
 	}
-	fflush(stdout);
 	_exit(1);
 }
 
@@ -154,9 +153,11 @@ int availableRAMSize(int cachesize){
 
 	if (cachesize > free_ram) {
 		maximum_cache_size = 7 * free_ram / 10;
-		printf("c WARNING: Maximum cache size larger than free RAM available\n");
-		printf("c Free RAM %d MB\n", free_ram);
-		printf("c Maximum cache size : %d MB -> %d MB\n", cachesize, maximum_cache_size);
+		if (solver->verbosity_c > 0) {
+			printf("c WARNING: Maximum cache size larger than free RAM available\n");
+			printf("c Free RAM %d MB\n", free_ram);
+			printf("c Maximum cache size : %d MB -> %d MB\n", cachesize, maximum_cache_size);
+		}
 	}
 	return maximum_cache_size;
 }
@@ -179,7 +180,7 @@ int main(int argc, char** argv)
 #if defined(__linux__)
 		fpu_control_t oldcw, newcw;
 		_FPU_GETCW(oldcw); newcw = (oldcw & ~_FPU_EXTENDED) | _FPU_DOUBLE; _FPU_SETCW(newcw);
-		printf("c WARNING: for repeatability, setting FPU to use double precision\n");
+		// printf("c WARNING: for repeatability, setting FPU to use double precision\n");
 #endif
 		// Extra options:
 		//

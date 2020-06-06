@@ -101,13 +101,14 @@ static void parse_DIMACS_main(B& in, Solver& S) {
             readClause(in, S, lits);
             S.addClause_(lits); }
     }
-    if (vars < S.nVars())
-        printf("c WARNING! DIMACS header mismatch: wrong number of variables.\n");
-    if (cnt  != clauses)
-        printf("c WARNING! DIMACS header mismatch: wrong number of clauses.\n");
-    if (pvars != S.nPVars())
-    	printf("c WARNING! DIMACS header mismatch: wrong number of important variables.\n");
-
+    if (S.verbosity_c > 0) {
+    	if (vars < S.nVars())
+    		printf("c WARNING! DIMACS header mismatch: wrong number of variables.\n");
+    	if (cnt  != clauses)
+    		printf("c WARNING! DIMACS header mismatch: wrong number of clauses.\n");
+    	if (pvars != S.nPVars())
+    		printf("c WARNING! DIMACS header mismatch: wrong number of important variables.\n");
+    }
     S.registerAsPVar(S.nVars(), false); // Added by k-hasimt  (Assertion:  S.ispvar.size() == nVars()"+1")
 
 }
