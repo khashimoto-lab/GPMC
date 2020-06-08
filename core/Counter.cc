@@ -210,17 +210,31 @@ void Counter::CompactVariables(const vec<bool>& occurred, int varnum)
 	map.growTo(nVars());
 	nonpvars.capacity(nVars());
 
+	vec<double> activity2;
+	vec<char> polarity2;
+	activity.copyTo(activity2);
+	polarity.copyTo(polarity2);
+
 	for(Var v=0; v < nVars(); v++)
 		if(!occurred[v]){
 			if(value(v) == l_Undef && ispvar[v]) npvars_isolated++;
 			continue;
 		}else{
-			if(ispvar[v]) map[v] = new_idx++;
+			if(ispvar[v]) {
+				map[v] = new_idx;
+				activity[new_idx] = activity2[v];
+				polarity[new_idx] = polarity2[v];
+				new_idx++;
+			}
 			else nonpvars.push_(v);
 		}
 	npvars = new_idx;
-	for(int i=0; i < nonpvars.size(); i++)
-		map[nonpvars[i]] = new_idx++;
+	for(int i=0; i < nonpvars.size(); i++) {
+		map[nonpvars[i]] = new_idx;
+		activity[new_idx] = activity2[nonpvars[i]];
+		polarity[new_idx] = polarity2[nonpvars[i]];
+		new_idx++;
+	}
 
 	// Rename literals
 	for(int i=0; i < clauses.size(); i++) {
@@ -247,10 +261,14 @@ void Counter::CompactVariables(const vec<bool>& occurred, int varnum)
 	// Shrink and clear vectors on variables
 	int diff = nVars() - varnum;
 
+/*
 	activity.clear();
 	activity.growTo(varnum, 0);
 	polarity.clear();
 	polarity.growTo(varnum, true);
+*/
+	activity.shrink(diff);
+	polarity.shrink(diff);
 
 	bool dealloc = false;
 	vardata  .clear(dealloc);
