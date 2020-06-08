@@ -200,9 +200,10 @@ int main(int argc, char** argv)
 		S.verbosity = 0;
 		S.verbEveryConflicts = vv;
 		S.showModel = false; // mod;
-		S.cachesize = availableRAMSize(opt_cachesize);
 
 		solver = &S;
+		S.cachesize = availableRAMSize(opt_cachesize);
+
 		// Use signal handlers that forcibly quit until the solver will be able to respond to
 		// interrupts:
 		signal(SIGINT,  SIGINT_exit);  //  2, SIGINT
