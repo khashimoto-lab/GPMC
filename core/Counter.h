@@ -34,6 +34,7 @@ public:
 	// Data members
 	//
 	mpz_class npmodels;				// The number of models (The number is set by solveMC())
+	mpz_class upbnd;
 
 	int verbosity_c;
 	int nbackjumps;

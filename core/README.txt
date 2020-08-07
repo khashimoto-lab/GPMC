@@ -1,4 +1,4 @@
-GPMC v1.0.0
+GPMC v1.0.1 
 		Kenji Hashimoto <k-hasimt@i.nagoya-u.ac.jp>, 
 		Nagoya University, Japan.
 		Oct, 2018.
@@ -52,16 +52,11 @@ Options:
     stop when the solver finds #projected models >= num. 
 
 -post / -no-post
-    do post-processing after the counting procedure is interrupted (default: off)
+    do post-processing after the counting procedure is interrupted (default: off).
+    This option is not active when -upto option is specified.
     
     If it is interrupted once, do post-processing in order to output the 
     incomplete count result at the time.
     NOTE: The post-processing may spend much time for large instances. 
-
--compUpBnd / -no-compUpBnd
-    compute a sound upper bound of the number of projected models (default: off)
     
-    If the main counting procedure stops before getting the exact number of models
-    (e.g., the solver is interrupted with -post on, or -upto is specified but the 
-    exact number is over a given threshold), then proceed to compute a sound upper bound.
-    NOTE: This option is experimental. In many cases, the solver returns the trivial bound.
+ 

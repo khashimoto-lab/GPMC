@@ -210,7 +210,6 @@ int main(int argc, char** argv)
 		IntOption  opt_cachesize ("GPMC -- MAIN", "cs", "Maximum component cache size (MB) (not strict)", 4000, IntRange(1, INT32_MAX));
 		StringOption opt_threshold ("GPMC -- MAIN", "upto", "Stop when it finds #models >= threshold. An input threshold should be a natural number.");
 		BoolOption opt_postprocess ("GPMC -- MAIN", "post", "Post Processing", false);
-		BoolOption opt_compUpBnd ("GPMC -- MAIN", "compUpBnd", "Compute an upper bound. The result bound is sound but may be trivial in many cases.", false);
 
 		parseOptions(argc, argv, true);
 
@@ -316,7 +315,7 @@ int main(int argc, char** argv)
 		if(S.nVars() != 0){
 			if(S.nIsoPVars() > 0 && S.hasThreshold)
 				mpz_cdiv_q_2exp(S.norma.get_mpz_t (), S.norma.get_mpz_t (), S.nIsoPVars());
-			S.postprocess = opt_postprocess;
+			S.postprocess = opt_postprocess && !S.hasThreshold;
 			S.countModels();
 		}
 		else{
@@ -341,53 +340,17 @@ int main(int argc, char** argv)
 			fflush(stdout);
 		}
 		else{
-			// Exact number is not found
-			mpz_class upperbound;
-			if(opt_compUpBnd){	// Try to compute an upper bound
-				printf("Computing a rough upper bound...");fflush(stdout);
-				S.clearCache();
-
-				Spo.verbosity_c = 0;
-				Spo.postprocess = true;
-				Spo.stopping = false;
-				Spo.cachesize = S.cachesize;
-				solver = &Spo;
-
-				Spo.initCalcUpperBound(S);
-
-				if(Spo.nClauses() != 0){
-					upperbound = 1;
-					mpz_mul_2exp(upperbound.get_mpz_t (), upperbound.get_mpz_t (), S.nPVars()+S.nIsoPVars());
-
-					if(Spo.simplifyMC()){
-						if(Spo.nVars() != 0)
-							Spo.countModels();
-						else {
-							Spo.npmodels = 1;
-							mpz_mul_2exp(Spo.npmodels.get_mpz_t (), Spo.npmodels.get_mpz_t (), Spo.nIsoPVars());
-						}
-						mpz_mul_2exp(Spo.npmodels.get_mpz_t (), Spo.npmodels.get_mpz_t (), S.nIsoPVars());
-						upperbound -= Spo.npmodels;
-					}
-				}
-				printf("done\n\n");
-			}
 			// Lower bound
 			gmp_printf("#Projected Models     >= %Zd\n", S.npmodels.get_mpz_t());
 			significand = mpz_get_d_2exp(&exp, S.npmodels.get_mpz_t());
 			if(exp > 64)
 				printf("                      ~= %lf * 2^%ld\n", significand, exp);
 
-			// Upper bound
-			if(opt_compUpBnd){
-				if(Spo.nClauses() == 0 || Spo.npmodels == 0)
-					printf("#Projected Models     <= 2^%ld\n", S.nPVars()+S.nIsoPVars());
-				else{
-					gmp_printf("#Projected Models     <= %Zd\n", upperbound.get_mpz_t());
-					significand = mpz_get_d_2exp(&exp, upperbound.get_mpz_t());
-					if(exp > 50)
-						printf("                      ~= %lf * 2^%ld\n", significand, exp);
-				}
+			if(!S.hasThreshold){
+				gmp_printf("                      <= %Zd\n", S.upbnd.get_mpz_t());
+				significand = mpz_get_d_2exp(&exp, S.upbnd.get_mpz_t());
+				if(exp > 64)
+					printf("                      ~= %lf * 2^%ld\n", significand, exp);
 			}
 			printf("CPU time              : %g s\n", cpuTime());
 			fflush(stdout);

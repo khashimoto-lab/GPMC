@@ -364,6 +364,9 @@ void Counter::countModels()
 			if(nsplitcomps == 0) {
 				// NO NEW COMPONENT (#MODELS of the current component is found)
 				cmpmgr.topDecision().increaseModels(1);
+				if(stopping)
+					cmpmgr.topDecision().initUpBnd();
+
 				// limlevel = decisionLevel();
 				bstate = backtrack();
 			}
@@ -378,7 +381,19 @@ void Counter::countModels()
 
 					if(sat_status == l_True) {
 						cmpmgr.topDecision().increaseModels(1);
-						cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),1);
+						if(stopping) {
+							if(cmpmgr.topComponent().hasPVar()){
+								cmpmgr.topDecision().initUpBnd();
+								mpz_class tmp = 1;
+								mpz_mul_2exp(tmp.get_mpz_t (), tmp.get_mpz_t (), cmpmgr.topComponent().nPVars(nPVars()));
+								cmpmgr.topDecision().increaseUpbnd(tmp);
+							}else{
+								cmpmgr.topDecision().initUpBnd();
+								cmpmgr.topDecision().increaseUpbnd(1);
+							}
+						}
+						else if(!cmpmgr.topComponent().hasPVar())
+							cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),1);
 						cmpmgr.eraseComponentStackID();
 						cmpmgr.popComponent();
 					}
@@ -425,6 +440,10 @@ void Counter::countModels()
 	}
 
 	mpz_mul_2exp(npmodels.get_mpz_t (), cmpmgr.topDecision().totalModels().get_mpz_t (), nIsoPVars());
+	if(stopping){
+		cmpmgr.topDecision().initUpBnd();
+		mpz_mul_2exp(upbnd.get_mpz_t (), cmpmgr.topDecision().UpBnd().get_mpz_t(), nIsoPVars());
+	}
 }
 
 void Counter::checkedEnqueue(Lit p, CRef from, int lv) {
@@ -750,10 +769,33 @@ Counter::btStateT Counter::backtrack(int backtrack_level, Lit lit, CRef cr){
 			return RESOLVED;
 		}
 		else {
+			if(stopping) {
+				cmpmgr.topDecision().initUpBnd();
+				cmpmgr.prevDecision().initUpBnd();
+				if(cmpmgr.topDecision().isFirstBranch()){
+					Lit dlit = trail[trail_lim.last()];
+					cancelCurDL();
+					uncheckedEnqueue(~dlit);
+					if(propagate() != CRef_Undef)
+						cmpmgr.prevDecision().increaseUpbnd(cmpmgr.topDecision().UpBnd());
+					else {
+						Component & targetcomp = cmpmgr.topComponent();
+						int vpnum = 0;
+						for(int v=0; targetcomp[v] != var_Undef && targetcomp[v] < nPVars(); v++)
+							if(value(targetcomp[v]) == l_Undef) vpnum++;
+						mpz_class tmp = 1;
+						mpz_mul_2exp(tmp.get_mpz_t (), tmp.get_mpz_t (), vpnum);
+						cmpmgr.prevDecision().increaseUpbnd(cmpmgr.topDecision().UpBnd()+tmp);
+					}
+				}
+				else
+					cmpmgr.prevDecision().increaseUpbnd(cmpmgr.topDecision().totalUpBnd());
+			}
+
 			// SecondBranch
 			cmpmgr.prevDecision().increaseModels(cmpmgr.topDecision().totalModels());
-
-			cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),cmpmgr.topDecision().totalModels());
+			if(!stopping)
+				cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),cmpmgr.topDecision().totalModels());
 			cmpmgr.eraseComponentStackID();
 
 			cancelCurDL();
