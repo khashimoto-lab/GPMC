@@ -16,9 +16,6 @@ static IntOption  opt_backjumping (_mc, "bj", "Controls backjumping (0=off, 1=li
 static BoolOption opt_ibcp        (_mc, "ibcp", "Use implict BCP", false);
 static BoolOption opt_presat      (_mc, "presat", "SAT solving as preprocessing", true);
 
-static const int NUM_PICKED_PCLS = 50;
-static const int SIZE_PICKED_PCL = 10;
-
 //=================================================================================================
 // Constructor/Destructor:
 
@@ -776,8 +773,32 @@ Counter::btStateT Counter::backtrack(int backtrack_level, Lit lit, CRef cr){
 					Lit dlit = trail[trail_lim.last()];
 					cancelCurDL();
 					uncheckedEnqueue(~dlit);
-					if(propagate() != CRef_Undef)
+					CRef confl;
+					if((confl = propagate()) != CRef_Undef){
+						int backtrack_level;
+						vec<Lit>     learnt_clause,selectors;
+						unsigned int nblevels,szWoutSelectors;
+						learnt_clause.clear();
+						selectors.clear();
+						analyze(confl, learnt_clause, selectors, backtrack_level, nblevels, szWoutSelectors);
+						CRef cr = CRef_Undef;
+						if (learnt_clause.size() == 1){
+							unitcls.push(learnt_clause[0]); nbUn++;
+							if(var(learnt_clause[0])<npvars)
+								punitcls.push(learnt_clause[0]);
+						}
+						else {
+							cr = ca.alloc(learnt_clause, true);
+							ca[cr].setLBD(nblevels);
+							ca[cr].setSizeWithoutSelectors(szWoutSelectors);
+							if(nblevels<=2) nbDL2++; 		// stats
+							if(ca[cr].size()==2) nbBin++; 	// stats
+							learnts.push(cr);
+							attachClause(cr);
+							claBumpActivity(ca[cr]);
+						}
 						cmpmgr.prevDecision().increaseUpbnd(cmpmgr.topDecision().UpBnd());
+					}
 					else {
 						Component & targetcomp = cmpmgr.topComponent();
 						int vpnum = 0;
@@ -1075,95 +1096,6 @@ lbool Counter::searchBelow(int start_dl, int nof_conflicts)
 		}
 	}
 	return l_Undef;
-}
-
-struct pickpcl_lt {
-    ClauseAllocator& ca;
-    pickpcl_lt(ClauseAllocator& ca_) : ca(ca_) {}
-    bool operator () (CRef x, CRef y) {
-    	if(ca[x].size() > SIZE_PICKED_PCL && ca[y].size() > SIZE_PICKED_PCL) return 0;
-	    return ca[x].size() > ca[y].size();
-    }
-};
-
-void Counter::initCalcUpperBound(Counter& S)
-{
-	sort(S.clauses, pickpcl_lt(S.ca));	// no good for large instances...
-	sort(S.learnts, pickpcl_lt(S.ca));
-
-	vec<vec<Lit>> pcls;
-	pcls.clear();
-
-	for(int i=0; i < S.punitcls.size(); i++){
-		pcls.push();
-		pcls.last().push(S.punitcls[i]);
-	}
-
-	int cs = 0;
-	int ls = 0;
-	for(int i=0; i <= SIZE_PICKED_PCL; i++){
-		for (int j=cs; j < S.clauses.size() && pcls.size() < NUM_PICKED_PCLS + S.punitcls.size(); j++, cs++){
-			Clause& c = S.ca[S.clauses[j]];
-			if(c.size() != i) break;
-
-			bool allpvars = true;
-			for(int k = 0; k < i; k++){
-				if(var(c[k]) >= S.nPVars()){
-					allpvars = false;
-					break;
-				}
-			}
-			if(allpvars){
-				pcls.push();
-				for(int k = 0; k < i; k++)
-					pcls.last().push(c[k]);
-			}
-		}
-		for (int j=ls; j < S.learnts.size() && pcls.size() < NUM_PICKED_PCLS + S.punitcls.size(); j++, ls++){
-			Clause& c = S.ca[S.learnts[j]];
-			if(c.size() != i) break;
-
-			bool allpvars = true;
-			for(int k = 0; k < i; k++){
-				if(var(c[k]) >= S.nPVars()){
-					allpvars = false;
-					break;
-				}
-			}
-			if(allpvars){
-				pcls.push();
-				for(int k = 0; k < i; k++)
-					pcls.last().push(c[k]);
-			}
-		}
-	}
-
-	for(int i=0; i<S.nPVars(); i++){
-		registerAsPVar(i, true);
-		newVar();
-	}
-
-	vec<Lit> lits;
-	for(int i=0; i<pcls.size(); i++){
-		newVar();
-
-		pcls[i].copyTo(lits);
-		lits.push(mkLit(S.nPVars()+i, true));
-		addClause_(lits);
-
-		lits.clear();
-		lits.push();
-		lits.push(mkLit(S.nPVars()+i, false));	// assert(var(lits[0]) < var(lits[1]));
-		for(int j=0; j<pcls[i].size(); j++){
-			lits[0] = ~pcls[i][j];
-			addClause_(lits);
-		}
-	}
-	lits.clear();
-	for(int i=S.nPVars(); i < nVars(); i++)
-		lits.push(mkLit(i, true));
-	addClause_(lits);
-	registerAsPVar(nVars(), false);
 }
 
 //=================================================================================================
