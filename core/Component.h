@@ -80,9 +80,11 @@ public:
 	const mpz_class totalModels() const {
 		return models_[0] + models_[1];
 	}
+
 	const mpz_class currentBranchModels() const {
 		return models_[cur_branch_];
 	}
+
 	bool isUnSAT() {
 		return models_[cur_branch_] == 0;
 	}
@@ -182,6 +184,11 @@ public:
 
 	bool hasPVar() {
 		return hasPVar_;
+	}
+	int nPVars(int npvars) {
+		int num = 0;
+		for(; data_[num] != var_Undef && data_[num] < npvars; num++);
+		return num;
 	}
 
 	void set_id(CacheEntryID id) {
