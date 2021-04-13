@@ -27,7 +27,6 @@ class Decision {
 	unsigned splitcompEnd_;
 
 	mpz_class models_[2];
-	mpz_class upbnd_;
 
 	bool hasThreshold_;
 	mpz_class norma_total_[2] = {0, 0};
@@ -37,7 +36,7 @@ public:
 	Decision(int trail_pos, unsigned basecomp, bool hasThreshold, mpz_class norma) :
 		trail_pos_(trail_pos), cur_branch_(false), basecomp_(basecomp),
 		splitcompFrom_(basecomp + 1), splitcompEnd_(basecomp + 1),
-		models_({ 0, 0 }), upbnd_(0), hasThreshold_(hasThreshold) {
+		models_({ 0, 0 }), hasThreshold_(hasThreshold) {
 		norma_cur_ = norma;
 		norma_total_[0] = norma;
 	}
@@ -81,15 +80,11 @@ public:
 	const mpz_class totalModels() const {
 		return models_[0] + models_[1];
 	}
-	const mpz_class UpBnd() const {
-		return upbnd_;
-	}
+
 	const mpz_class currentBranchModels() const {
 		return models_[cur_branch_];
 	}
-	const mpz_class totalUpBnd() const {
-		return models_[0] + upbnd_;
-	}
+
 	bool isUnSAT() {
 		return models_[cur_branch_] == 0;
 	}
@@ -115,18 +110,6 @@ public:
 
 		if(hasThreshold_ && models_[cur_branch_] != 0)
 			mpz_cdiv_q(norma_cur_.get_mpz_t(),norma_total_[cur_branch_].get_mpz_t(), models_[cur_branch_].get_mpz_t());
-	}
-
-	void initUpBnd() {
-		if(upbnd_ == 0 && models_[cur_branch_] != 0) upbnd_ = models_[cur_branch_];
-	}
-	void increaseUpbnd(const mpz_class &upbnd) {
-		if(upbnd_ == 0) upbnd_ = upbnd;
-		else upbnd_ *= upbnd;
-	}
-	void increaseUpbnd(int upbnd) {
-		if(upbnd_ == 0) upbnd_ = upbnd;
-		else upbnd_ *= upbnd;
 	}
 
 	bool satisfyNorma() {

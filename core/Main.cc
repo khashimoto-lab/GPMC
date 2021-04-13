@@ -345,13 +345,6 @@ int main(int argc, char** argv)
 			significand = mpz_get_d_2exp(&exp, S.npmodels.get_mpz_t());
 			if(exp > 64)
 				printf("                      ~= %lf * 2^%ld\n", significand, exp);
-
-			if(!S.hasThreshold){
-				gmp_printf("                      <= %Zd\n", S.upbnd.get_mpz_t());
-				significand = mpz_get_d_2exp(&exp, S.upbnd.get_mpz_t());
-				if(exp > 64)
-					printf("                      ~= %lf * 2^%ld\n", significand, exp);
-			}
 			printf("CPU time              : %g s\n", cpuTime());
 			fflush(stdout);
 		}
