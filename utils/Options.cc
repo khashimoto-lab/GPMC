@@ -58,34 +58,34 @@ void Glucose::setUsageHelp      (const char* str){ Option::getUsageString() = st
 void Glucose::setHelpPrefixStr  (const char* str){ Option::getHelpPrefixString() = str; }
 void Glucose::printUsageAndExit (int argc, char** argv, bool verbose)
 {
-    const char* usage = Option::getUsageString();
-    if (usage != NULL)
-        fprintf(stderr, usage, argv[0]);
+	const char* usage = Option::getUsageString();
+	if (usage != NULL)
+		fprintf(stderr, usage, argv[0]);
 
-        sort(Option::getOptionList(), Option::OptionLt());
+	sort(Option::getOptionList(), Option::OptionLt());
 
-    const char* prev_cat  = NULL;
-    const char* prev_type = NULL;
+	const char* prev_cat  = NULL;
+	const char* prev_type = NULL;
 
-    for (int i = 0; i < Option::getOptionList().size(); i++){
-        const char* cat  = Option::getOptionList()[i]->category;
-        const char* type = Option::getOptionList()[i]->type_name;
+	for (int i = 0; i < Option::getOptionList().size(); i++){
+		const char* cat  = Option::getOptionList()[i]->category;
+		const char* type = Option::getOptionList()[i]->type_name;
 
-        if (cat != prev_cat)
-            fprintf(stderr, "\n%s OPTIONS:\n\n", cat);
-        else if (type != prev_type)
-            fprintf(stderr, "\n");
+		if (cat != prev_cat)
+			fprintf(stderr, "\n%s OPTIONS:\n\n", cat);
+		else if (type != prev_type)
+			fprintf(stderr, "\n");
 
-        Option::getOptionList()[i]->help(verbose);
+		Option::getOptionList()[i]->help(verbose);
 
-        prev_cat  = Option::getOptionList()[i]->category;
-        prev_type = Option::getOptionList()[i]->type_name;
-    }
+		prev_cat  = Option::getOptionList()[i]->category;
+		prev_type = Option::getOptionList()[i]->type_name;
+	}
 
-    fprintf(stderr, "\nHELP OPTIONS:\n\n");
-    fprintf(stderr, "  --%shelp        Print help message.\n", Option::getHelpPrefixString());
-    fprintf(stderr, "  --%shelp-verb   Print verbose help message.\n", Option::getHelpPrefixString());
-    fprintf(stderr, "\n");
-    exit(0);
+	fprintf(stderr, "\nHELP OPTIONS:\n\n");
+	fprintf(stderr, "  --%shelp        Print help message.\n", Option::getHelpPrefixString());
+	fprintf(stderr, "  --%shelp-verb   Print verbose help message.\n", Option::getHelpPrefixString());
+	fprintf(stderr, "\n");
+	exit(0);
 }
 
