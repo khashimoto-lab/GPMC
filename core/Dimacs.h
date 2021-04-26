@@ -16,7 +16,7 @@ NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPO
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-**************************************************************************************************/
+ **************************************************************************************************/
 // Modified so that our counter can accept dimacs cnf files with a specification of projection variables
 // by Kenji Hashimoto
 
@@ -38,19 +38,19 @@ namespace GPMC {
 
 template<class B, class Solver>
 static void readClause(B& in, Solver& S, vec<Lit>& lits) {
-    int     parsed_lit, var;
-    lits.clear();
-    for (;;){
-        parsed_lit = parseInt(in);
-        if (parsed_lit == 0) break;
-        var = abs(parsed_lit)-1;
-        while (var >= S.nVars()) S.newVar();
-        lits.push( (parsed_lit > 0) ? mkLit(var) : ~mkLit(var) );
-    }
+	int     parsed_lit, var;
+	lits.clear();
+	for (;;){
+		parsed_lit = parseInt(in);
+		if (parsed_lit == 0) break;
+		var = abs(parsed_lit)-1;
+		while (var >= S.nVars()) S.newVar();
+		lits.push( (parsed_lit > 0) ? mkLit(var) : ~mkLit(var) );
+	}
 }
 
 // --- Added by k-hasimt --- BEGIN
-// Read projection vars  :  e.g., "cr 1 2 3 ... 0" before "p cnf"
+// Read projection vars
 template<class B, class Solver>
 static void readProjVars(B& in, Solver&S) {
 	int     parsed_var;
@@ -65,55 +65,85 @@ static void readProjVars(B& in, Solver&S) {
 
 template<class B, class Solver>
 static void parse_DIMACS_main(B& in, Solver& S) {
-    vec<Lit> lits;
-    int vars    = 0;
-    int clauses = 0;
-    int cnt     = 0;
-    for (;;){
-        skipWhitespace(in);
-        if (*in == EOF) break;
-        else if (*in == 'p'){
-            if (eagerMatch(in, "p cnf")){
-                vars    = parseInt(in);
-                clauses = parseInt(in);
-                // SATRACE'06 hack
-                // if (clauses > 4000000)
-                //     S.eliminate(true);
-            }else{
-                printf("PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
-            }
-        }        
-	// --- Added by k-hasimt --- BEGIN
-        else if (*in == 'c'){
-            if (eagerMatch(in, "cr")){
-                readProjVars(in, S);
-            }
-            else
-            	skipLine(in);
-        // } else if (*in == 'c' || *in == 'p')
-        // --- Added by k-hasimt --- END
-        } else if (*in == 'p')
-            skipLine(in);
-        else{
-            cnt++;
-            readClause(in, S, lits);
-            S.addClause_(lits); }
-    }
-    if (vars != S.nVars())
-        fprintf(stderr, "WARNING! DIMACS header mismatch: wrong number of variables.\n");
-    if (cnt  != clauses)
-        fprintf(stderr, "WARNING! DIMACS header mismatch: wrong number of clauses.\n");
+	vec<Lit> lits;
+	int vars    = 0;
+	int clauses = 0;
+	int cnt     = 0;
+	int pvars   = 0;
 
-    S.registerAsPVar(S.nVars(), false); // Added by k-hasimt  (Assertion:  S.ispvar.size() == nVars()"+1")
+	enum FILEFORMAT { CNFCR, MC2020, MC2021 };
+	enum FILEFORMAT format = MC2021;
 
+	for (;;){
+		skipWhitespace(in);
+		if (*in == EOF) break;
+		else if (*in == 'p'){
+			B in_b = in;
+			if (eagerMatch(in, "p cnf")){
+				vars    = parseInt(in);
+				clauses = parseInt(in);
+				// pvars   = parseInt(in);
+				// SATRACE'06 hack
+				// if (clauses > 4000000)
+				//     S.eliminate(true);
+			} else if (eagerMatch(in_b, "p pcnf")) { // added by k-hasimt
+				in = in_b;
+				vars    = parseInt(in);
+				clauses = parseInt(in);
+				pvars   = parseInt(in);
+				format = MC2020;	// mcc2020
+			}else{
+				printf("c o PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
+			}
+			// } else if (*in == 'c' || *in == 'p')
+		} else if (*in == 'c') {
+			B in_b = in, in_c = in;
+			if (eagerMatch(in_b, "c p show")) {
+				in = in_b;
+				readProjVars(in, S);
+				format = MC2021;
+			} else if (eagerMatch(in_c, "cr")) {  // added by k-hasimt
+				in = in_c;
+				readProjVars(in, S);
+				format = CNFCR;
+			} else
+				skipLine(in);
+		} else if (*in == 'v'){
+			if (eagerMatch(in, "vp")) {  // added by k-hasimt
+				readProjVars(in, S);
+			} else {
+				printf("c o PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
+			}
+		}
+		else{
+			cnt++;
+			readClause(in, S, lits);
+			S.addClause_(lits); }
+	}
+	if (vars < S.nVars())
+		fprintf(stderr, "c o WARNING! DIMACS header mismatch: wrong number of variables.\n");
+	if (cnt  != clauses)
+		fprintf(stderr, "c o WARNING! DIMACS header mismatch: wrong number of clauses.\n");
+	if (format == MC2020 && pvars == S.nPVars())
+		fprintf(stderr, "c o WARNING! DIMACS header mismatch: wrong number of pvars.\n");
+
+	S.registerAsPVar(S.nVars(), false); // Added by k-hasimt  (Assertion:  S.ispvar.size() == nVars()"+1")
+
+	printf("c o Input format: ");
+	switch(format) {
+	case CNFCR: printf("CNF+CR\n"); break;
+	case MC2020: printf("MC2020\n");break;
+	case MC2021: printf("MC2021\n");break;
+	default: printf("Unknown\n");
+	}
 }
 
 // Inserts problem into solver.
 //
 template<class Solver>
 static void parse_DIMACS(gzFile input_stream, Solver& S) {
-    StreamBuffer in(input_stream);
-    parse_DIMACS_main(in, S); }
+	StreamBuffer in(input_stream);
+	parse_DIMACS_main(in, S); }
 
 //=================================================================================================
 }
