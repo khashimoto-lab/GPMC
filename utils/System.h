@@ -32,6 +32,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 namespace Glucose {
 
 static inline double cpuTime(void); // CPU-time in seconds.
+static inline double realTime(void); // Real time in secionds. added by nabesima
 extern double memUsed();            // Memory in mega bytes (returns 0 for unsupported architectures).
 extern double memUsedPeak();        // Peak-memory in mega bytes (returns 0 for unsupported architectures).
 
@@ -50,11 +51,21 @@ static inline double Glucose::cpuTime(void) { return (double)clock() / CLOCKS_PE
 #include <sys/resource.h>
 #include <unistd.h>
 
-static inline double Glucose::cpuTime(void) {
+// -- import from Glueminisat by k-hasimt
+// modified by nabesima
+//static inline double GlueMiniSat::cpuTime(void) {
+inline double Glucose::cpuTime(void) {
     struct rusage ru;
     getrusage(RUSAGE_SELF, &ru);
     return (double)ru.ru_utime.tv_sec + (double)ru.ru_utime.tv_usec / 1000000; }
 
 #endif
+
+// added by nabesima
+//static inline double GlueMiniSat::realTime(void) {
+inline double Glucose::realTime(void) {
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    return time.tv_sec + time.tv_usec / 1000000.0; }
 
 #endif
