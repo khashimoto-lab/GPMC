@@ -145,14 +145,14 @@ int main(int argc, char** argv)
 
 		S.hasThreshold = (opt_threshold != NULL);
 		if(S.hasThreshold) {
-			S.norma = opt_threshold;
+			S.norma = S.norma_orig = opt_threshold;
 			if(S.norma <= 0){
 				fprintf(stderr, "c o Invalid argument: -upto=<num>: num should be a positive natural number > 0.\n");
 				exit(1);
 			}
 		}
 		else
-			S.norma = 0;
+			S.norma = S.norma_orig = 0;
 
 		solver = &S;
 		// Use signal handlers that forcibly quit until the solver will be able to respond to

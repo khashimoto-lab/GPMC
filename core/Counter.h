@@ -36,6 +36,7 @@ public:
 	//
 	mpz_class npmodels;				// The number of models
 	mpz_class norma;
+	mpz_class norma_orig;
 
 	// options
 	bool on_bj;

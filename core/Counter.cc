@@ -29,6 +29,7 @@ static IntOption  opt_simp_thd (_mc, "rmvsatclthd", "Thereshold of removing sati
 Counter::Counter() :
   npmodels           (0)
 , norma              (0)
+, norma_orig         (0)
 , on_bj              (opt_bj)
 , bjthd              (opt_bj_thd)
 , on_simp            (opt_simp)
@@ -997,7 +998,7 @@ void Counter::printStats() const
 	if(!asynch_interrupt) {
 		if(hasThreshold) {
 			printf("c o #pmc >= ");
-			mpz_out_str(stdout, 10, norma.get_mpz_t());
+			mpz_out_str(stdout, 10, norma_orig.get_mpz_t());
 			printf(" ?\n");
 			printf("c s %s\n", npmodels>=norma ? "YES" : "NO");
 		} else {
