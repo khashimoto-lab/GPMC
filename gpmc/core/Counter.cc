@@ -15,7 +15,6 @@ using namespace GPMC;
 
 static const char* _mc = "GPMC -- COUNTER";
 static BoolOption opt_mc       (_mc, "mc", "Model counting (all vars are projection vars)", false);
-static BoolOption opt_postproc (_mc, "pp", "Postprocessing", false);
 
 static BoolOption opt_bj       (_mc, "bj", "Backjumping", true);
 static DoubleOption opt_bj_thd (_mc, "bjthd", "Backjumping threshold", 0.5, DoubleRange(0, false, 1, false));
@@ -28,13 +27,9 @@ static IntOption  opt_simp_thd (_mc, "rmvsatclthd", "Thereshold of removing sati
 
 Counter::Counter() :
   npmodels           (0)
-, norma              (0)
 , on_bj              (opt_bj)
 , bjthd              (opt_bj_thd)
 , on_simp            (opt_simp)
-, hasThreshold       (false)
-, postprocessing     (opt_postproc)
-, stopping           (false)
 , verbosity_c        (0)
 , mc                 (opt_mc)
 , conflicts_pre      (0)
@@ -331,7 +326,7 @@ void Counter::count_main()
 
 	btStateT bstate = RESOLVED;
 	limlevel = 0;
-	cmpmgr.init(nVars(),nPVars(),clauses,ca,hasThreshold,norma);
+	cmpmgr.init(nVars(),nPVars(),clauses,ca);
 
 	for(;;) {
 		assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
@@ -363,7 +358,6 @@ void Counter::count_main()
 				cmpmgr.backjumpTo(backtrack_level);
 				cmpmgr.removeCachePollutions();
 				cmpmgr.topDecision().increaseModels(0);	// reset
-				if(hasThreshold) cmpmgr.topDecision().resetNorma();
 				bstate = RESOLVED;
 				continue;
 			}
@@ -395,7 +389,6 @@ void Counter::count_main()
 				cmpmgr.backjumpTo(level);
 				cmpmgr.removeCachePollutions();
 				cmpmgr.topDecision().increaseModels(0);	// reset
-				if(hasThreshold) cmpmgr.topDecision().resetNorma();
 				if(cr != CRef_Undef) uncheckedEnqueue(learnt_clause[0], cr);
 				bstate = RESOLVED;
 
@@ -425,8 +418,7 @@ void Counter::count_main()
 
 				// PROCESS COMPONENTS WITHOUT PROJECTION VARS FIRST
 				lbool sat_status = l_Undef;
-				while(cmpmgr.topDecision().hasUnprocessedSplitComp()
-						&& (!cmpmgr.topComponent().hasPVar() || (hasThreshold && cmpmgr.topDecision().getCurNorma()==1) || asynch_interrupt)) {
+				while(cmpmgr.topDecision().hasUnprocessedSplitComp() && !cmpmgr.topComponent().hasPVar()) {
 					sat_status = solveSAT(); // SAT solving, i.e., try to find only one model
 
 					if(sat_status == l_True) {
@@ -452,7 +444,6 @@ void Counter::count_main()
 						cmpmgr.backjumpTo(last_bklevel);
 						cmpmgr.removeCachePollutions();
 						cmpmgr.topDecision().increaseModels(0);	// reset
-						if(hasThreshold) cmpmgr.topDecision().resetNorma();
 						bstate = RESOLVED;
 						continue;
 					}
@@ -465,7 +456,6 @@ void Counter::count_main()
 						cmpmgr.backjumpTo(level);
 						cmpmgr.removeCachePollutions();
 						cmpmgr.topDecision().increaseModels(0);	// reset
-						if(hasThreshold) cmpmgr.topDecision().resetNorma();
 						if(last_cr != CRef_Undef) uncheckedEnqueue(last_lit, last_cr);
 						bstate = RESOLVED;
 
@@ -731,9 +721,7 @@ Counter::btStateT Counter::backtrack(int backtrack_level, Lit lit, CRef cr) {
 		assert(decisionLevel() > 0);
 		assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
 
-		if (cmpmgr.topDecision().isFirstBranch()
-				&& (!hasThreshold || !cmpmgr.topDecision().satisfyNorma())
-				&& !asynch_interrupt) {
+		if (cmpmgr.topDecision().isFirstBranch()) {
 			// FirstBranch
 
 			Lit dlit = trail[trail_lim.last()];
@@ -984,8 +972,6 @@ void Counter::printStats() const
 		printf("c o SAT calls             = %-11"PRIu64" (SAT %"PRIu64", UNSAT %"PRIu64")\n", solves, sats, solves-sats);
 		printf("c o SAT starts            = %"PRIu64"\n", starts);
 		printf("c o backjumps             = %-11"PRIu64" (sp %"PRIu64") [init %s / final %s]\n", nbackjumps+nbackjumps_sp, nbackjumps_sp, opt_bj ? "on" : "off", on_bj ? "on" : "off");
-		printf("c o postprocess           = %s\n", postprocessing ? "on" : "off");
-		printf("c o hasThereshold         = %s\n", hasThreshold   ? "on" : "off");
 		if (mem_used != 0)
 			printf("c o Memory used           = %.2f MB\n", mem_used);
 		printf("c o CPU time              = %.3f s\n", cpu_time);
@@ -995,37 +981,22 @@ void Counter::printStats() const
 		printf("c o [Result]\n");
 	}
 	if(!asynch_interrupt) {
-		if(hasThreshold) {
-			printf("c o #pmc >= ");
-			mpz_out_str(stdout, 10, norma.get_mpz_t());
-			printf(" ?\n");
-			printf("c s %s\n", npmodels>=norma ? "YES" : "NO");
-		} else {
-			if(npmodels == 0 ) {
-				printf("s UNSATISFIABLE\n");
-				printf("c s type %s\n", mc ? "mc" : "pmc");
-				printf("c s log10-estimate %.15g\n", log10(0));
-				printf("c s exact arb int 0\n");
-			} else {
-				printf("s SATISFIABLE\n");
-				// adopt an easy way for log10-estimate. not sure about the precision...
-				printf("c s type %s\n", mc ? "mc" : "pmc");
-				printf("c s log10-estimate %.15g\n", log10(mpz_get_d(npmodels.get_mpz_t())));
-				printf("c s exact arb int ");
-				mpz_out_str(stdout, 10, npmodels.get_mpz_t());
-				printf("\n");
-			}
-		}
-	} else {
-		if(postprocessing) {
-			printf("s %s\n", npmodels>0 ? "SATISFIABLE" : "UNSATISFIABLE");
+		if(npmodels == 0 ) {
+			printf("s UNSATISFIABLE\n");
 			printf("c s type %s\n", mc ? "mc" : "pmc");
-			printf("c s lower bound arb int ");
+			printf("c s log10-estimate %.15g\n", log10(0));
+			printf("c s exact arb int 0\n");
+		} else {
+			printf("s SATISFIABLE\n");
+			// adopt an easy way for log10-estimate. not sure about the precision...
+			printf("c s type %s\n", mc ? "mc" : "pmc");
+			printf("c s log10-estimate %.15g\n", log10(mpz_get_d(npmodels.get_mpz_t())));
+			printf("c s exact arb int ");
 			mpz_out_str(stdout, 10, npmodels.get_mpz_t());
 			printf("\n");
 		}
-		else
-			printf("s UNKNOWN\n");
+	} else {
+		printf("s UNKNOWN\n");
 	}
 	fflush(stdout);
 }

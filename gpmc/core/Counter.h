@@ -35,15 +35,11 @@ public:
 	// Data members
 	//
 	mpz_class npmodels;				// The number of models
-	mpz_class norma;
 
 	// options
 	bool on_bj;
 	double bjthd;
 	bool on_simp;
-	bool hasThreshold;
-	bool postprocessing;
-	bool stopping;
 
 	int verbosity_c;
 	bool mc;

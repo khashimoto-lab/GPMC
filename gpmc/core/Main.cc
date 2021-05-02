@@ -83,23 +83,13 @@ using namespace GPMC;
 static Counter* solver;
 // Terminate by notifying the solver and back out gracefully. This is mainly to have a test-case
 // for this feature of the Solver as it may take longer than an immediate call to '_exit()'.
-static void SIGINT_interrupt(int signum) {
-	printf("c o\n"); printf("c o *** INTERRUPTED by signal %d ***\n", signum);fflush(stdout);
-	solver->interrupt();
-
-	if(solver->stopping || !solver->postprocessing) {
-		// solver->printStats();
-		_exit(1);
-	} else {
-		solver->stopping = true;
-	}
-}
+// static void SIGINT_interrupt(int signum) { solver->interrupt(); }
 
 // Note that '_exit()' rather than 'exit()' has to be used. The reason is that 'exit()' calls
 // destructors and may cause deadlocks if a malloc/free function happens to be running (these
 // functions are guarded by locks for multithreaded use).
 static void SIGINT_exit(int signum) {
-	printf("c o\n"); printf("c o *** INTERRUPTED by signal %d ***\n", signum);fflush(stdout);
+	printf("c o\nc o *** INTERRUPTED by signal %d ***\ns UNKNOWN\n", signum);fflush(stdout);
 	solver->interrupt();
 	// solver->printStats();
 	_exit(1); }
@@ -126,7 +116,6 @@ int main(int argc, char** argv)
 		IntOption    verb("MAIN", "verb",   "Verbosity level (0=silent, 1=some).", 1, IntRange(0, 1));
 		IntOption    cpu_lim("MAIN", "cpu-lim","Limit on CPU time allowed in seconds.\n", INT32_MAX, IntRange(0, INT32_MAX));
 		IntOption    mem_lim("MAIN", "mem-lim","Limit on memory usage in megabytes.\n", INT32_MAX, IntRange(0, INT32_MAX));
-		StringOption opt_threshold ("GPMC -- MAIN", "upto", "Stop when it finds #models >= threshold. An input threshold should be a natural number.");
 
 		printf("c o "GPMC_VERSION"\n");
 		printf("c o Command: ");
@@ -143,22 +132,12 @@ int main(int argc, char** argv)
 		S.verbosity_c = verb;
 		S.verbosity = 0;
 
-		S.hasThreshold = (opt_threshold != NULL);
-		if(S.hasThreshold) {
-			S.norma = opt_threshold;
-			if(S.norma <= 0){
-				fprintf(stderr, "c o Invalid argument: -upto=<num>: num should be a positive natural number > 0.\n");
-				exit(1);
-			}
-		}
-		else
-			S.norma = 0;
-
 		solver = &S;
 		// Use signal handlers that forcibly quit until the solver will be able to respond to
 		// interrupts:
 		signal(SIGINT, SIGINT_exit);
 		signal(SIGXCPU,SIGINT_exit);
+		signal(SIGTERM,SIGINT_exit);  // 15, SIGTERM
 
 		// Set limit on CPU-time:
 		if (cpu_lim != INT32_MAX){
@@ -167,7 +146,7 @@ int main(int argc, char** argv)
 			if (rl.rlim_max == RLIM_INFINITY || (rlim_t)cpu_lim < rl.rlim_max){
 				rl.rlim_cur = cpu_lim;
 				if (setrlimit(RLIMIT_CPU, &rl) == -1)
-					printf("WARNING! Could not set resource limit: CPU-time.\n");
+					printf("c o WARNING! Could not set resource limit: CPU-time.\n");
 			} }
 
 		// Set limit on virtual memory:
@@ -196,11 +175,8 @@ int main(int argc, char** argv)
 
 		// Change to signal-handlers that will only notify the solver and allow it to terminate
 		// voluntarily:
-		signal(SIGINT,  SIGINT_interrupt);  //  2, SIGINT
-		signal(SIGABRT, SIGINT_exit);       //  6, SIGABRT
-		signal(SIGSEGV, SIGINT_exit);       // 11, SIGSEGV
-		signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
-		signal(SIGXCPU, SIGINT_interrupt);
+		signal(SIGABRT, SIGINT_exit);  //  6, SIGABRT
+		signal(SIGSEGV, SIGINT_exit);  // 11, SIGSEGV
 
 		bool simp = S.presimplify();
 		if (S.verbosity_c) {
@@ -215,9 +191,6 @@ int main(int argc, char** argv)
 			S.npmodels = 1;
 			mpz_mul_2exp(S.npmodels.get_mpz_t (), S.npmodels.get_mpz_t (), S.nIsoPVars());
 		} else {
-			if(S.nIsoPVars() > 0 && S.hasThreshold)
-				mpz_cdiv_q_2exp(S.norma.get_mpz_t (), S.norma.get_mpz_t (), S.nIsoPVars());
-
 			S.countModels();
 		}
 

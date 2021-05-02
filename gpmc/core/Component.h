@@ -28,17 +28,11 @@ class Decision {
 
 	mpz_class models_[2];
 
-	bool hasThreshold_;
-	mpz_class norma_total_[2] = {0, 0};
-	mpz_class norma_cur_ = 0;
-
 public:
-	Decision(int trail_pos, unsigned basecomp, bool hasThreshold, mpz_class norma) :
+	Decision(int trail_pos, unsigned basecomp) :
 		trail_pos_(trail_pos), cur_branch_(false), basecomp_(basecomp),
 		splitcompFrom_(basecomp + 1), splitcompEnd_(basecomp + 1),
-		models_({ 0, 0 }), hasThreshold_(hasThreshold) {
-		norma_cur_ = norma;
-		norma_total_[0] = norma;
+		models_({ 0, 0 }) {
 	}
 
 	int trailPos() {
@@ -54,7 +48,6 @@ public:
 	}
 	void changeBranch() {
 		cur_branch_ = true;
-		if(hasThreshold_) calcSecondNorma();
 	}
 
 	//
@@ -94,9 +87,6 @@ public:
 			models_[cur_branch_] = nmodels;
 		else
 			models_[cur_branch_] *= nmodels;
-
-		if(hasThreshold_ && models_[cur_branch_] != 0)
-			mpz_cdiv_q(norma_cur_.get_mpz_t(),norma_total_[cur_branch_].get_mpz_t(), models_[cur_branch_].get_mpz_t());
 	}
 	void increaseModels(int nmodels) {
 		if (nmodels == 0) {
@@ -107,23 +97,6 @@ public:
 			models_[cur_branch_] = nmodels;
 		else
 			models_[cur_branch_] *= nmodels;
-
-		if(hasThreshold_ && models_[cur_branch_] != 0)
-			mpz_cdiv_q(norma_cur_.get_mpz_t(),norma_total_[cur_branch_].get_mpz_t(), models_[cur_branch_].get_mpz_t());
-	}
-
-	bool satisfyNorma() {
-		return models_[cur_branch_] >= norma_total_[cur_branch_];
-	}
-	void calcSecondNorma() {
-		norma_total_[1] = norma_total_[0] - models_[0];
-		norma_cur_ = norma_total_[1];
-	}
-	mpz_class getCurNorma() {
-		return norma_cur_;
-	}
-	void resetNorma() {
-		norma_cur_ = norma_total_[cur_branch_];
 	}
 };
 
@@ -551,14 +524,11 @@ class ComponentManager {
 
 	ComponentCache cache_;
 
-	bool hasThreshold_;
-	mpz_class norma_;
-
 	int fixed_level_;
 
 public:
 	ComponentManager() :
-		npvars_(0), components(0), num_try_split(0), hasThreshold_(false), fixed_level_(0) {
+		npvars_(0), components(0), num_try_split(0), fixed_level_(0) {
 	}
 
 	~ComponentManager()
@@ -569,8 +539,7 @@ public:
 		}
 	}
 
-	void init(int nvars, int npvars, const vec<CRef>& sclauses,
-			const ClauseAllocator& sca, bool hasThreshold, mpz_class norma);
+	void init(int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca);
 
 	int splitComponent(const vec<lbool>& assigns);
 
@@ -584,7 +553,7 @@ public:
 		return *(dl_.end() - 2);
 	}
 	void pushDecision(int trailp) {
-		dl_.push_back(Decision(trailp, comp_stack_.size() - 1, hasThreshold_, topDecision().getCurNorma()));
+		dl_.push_back(Decision(trailp, comp_stack_.size() - 1));
 	}
 	void popDecision() {
 		dl_.pop_back();
