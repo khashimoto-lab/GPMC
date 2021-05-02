@@ -6,7 +6,7 @@ using namespace GPMC;
 
 #define CACHE
 
-void ComponentManager::init(int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca, int cachesize, bool hasThreshold, mpz_class norma){
+void ComponentManager::init(int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca, bool hasThreshold, mpz_class norma){
 	vec< vec<Var> > binlinks(nvars);
 	vec< vec<ClID> > occ(nvars);
 
@@ -55,7 +55,7 @@ void ComponentManager::init(int nvars, int npvars, const vec<CRef>& sclauses, co
 	npvars_ = npvars;
 
 #ifdef CACHE
-	cache_.init(cachesize);
+	cache_.init();
 	CachedComponent::adjustPackSize(nvars, clauses_.size());
 #endif
 
@@ -244,6 +244,7 @@ void ComponentManager::searchComponent(Var seed_var, const vec<lbool>& assigns, 
 Var ComponentManager::pickBranchVar(const vec<double>& activity)
 {
 	// GPMC uses the lexicographical order of var_frequency and activity for choosing a decision var.
+	// ToDo: try other heuristics
 
 	Component& c = topComponent();
 	assert(dl_.back().SplitCompsEnd() == comp_stack_.size());

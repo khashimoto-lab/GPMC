@@ -8,6 +8,8 @@ using namespace Glucose;
 
 namespace GPMC {
 
+#define GPMC_VERSION "gpmc-1.0.1"
+
 class Counter: public Solver {
 public:
 	// Constructor/Destructor
@@ -17,41 +19,42 @@ public:
 
 	// Methods
 	//
-	bool simplifyMC();			// Simplification before model counting
+	bool presimplify();			// Simplification before model counting
+	bool simplify();
 	void countModels();			// Main count method
 
 	void registerAsPVar(Var v, bool b);	// Register a projection variable (if b is true)
+	void registerAllVarsAsPVar(int nvars);
 	int nPVars() const;			// The number of non-isolated projection variables
 	int nIsoPVars() const;			// The number of isolated projection variables
 
-	void printStatsOfCM();		// Print stats of the component manager.
-
-	void clearCache() { cmpmgr.cache().deleteallentries(); }
-	void initCalcUpperBound(Counter& S);
-
-	void toDimacsRaw();			// For debug: Print the current formula.
+	void printProblemStats(double parsed_time, const char* msg) const;
+	void printStats() const;
+	void toDimacsRaw(const char *file);	// For debug
 
 	// Data members
 	//
-	mpz_class npmodels;				// The number of models (The number is set by solveMC())
-	mpz_class upbnd;
-
-	int verbosity_c;
-	int nbackjumps;
-	int nbackjumpstolim;
-
-	int cachesize;
-
-	// options
-	int backjumping;
-	bool ibcp;
-	bool presat;
-
-	bool hasThreshold;
+	mpz_class npmodels;				// The number of models
 	mpz_class norma;
 
-	bool postprocess;
+	// options
+	bool on_bj;
+	double bjthd;
+	bool on_simp;
+	bool hasThreshold;
+	bool postprocessing;
 	bool stopping;
+
+	int verbosity_c;
+	bool mc;
+
+	/// statistics
+	uint64_t conflicts_pre, decisions_pre, propagations_pre;
+	uint64_t conflicts_sg, decisions_sg, propagations_sg;
+	uint64_t sats, nbackjumps, nbackjumps_sp;
+	uint64_t reduce_dbs_pre, simp_dbs;
+	double real_stime;
+	double simplify_time;
 
 protected:
 	enum btStateT {
@@ -62,49 +65,49 @@ protected:
 	//
 
 	/// Preprocessing
-	void CompactClauses(vec<bool>& occurred, int& varnum);			// Removed satisfied clauses and compact clauses after simplification
-	void CompactVariables(const vec<bool>& occurred, int varnum);	// Renumber variables after simplification
-	bool FailedLiterals();											// Failed literal probing
+	bool FailedLiterals();
+	void Compact();
+	void CompactClauses(vec<CRef>& cs, vec<bool>& occurred, int& varnum);
+	void RewriteClauses(const vec<CRef>& cs, const vec<Var>& map);
+	void removeClauseNoDetach(CRef cr);
+	void reinit(const int varnum);
 
-	void checkedEnqueue(Lit p, CRef from, int level);	// Enqueue a literal if value of literal is undefined.
+	/// Count main method
+	void count_main();
 
-	btStateT backjump(int backtrack_level, Lit lit = lit_Undef, CRef cr = CRef_Undef, bool flag = false);
+	/// Backtrack
 	btStateT backtrack(int backtrack_level = -1, Lit lit = lit_Undef, CRef cr = CRef_Undef);
+	void cancelCurDL();
 
-	void cancelCurDL();           // Cancel assignment at current decision level
+	/// SAT solving for the current component
+	lbool solveSAT();
+	lbool searchBelow(int start_level);
 
-	lbool solveSAT();				// SAT solving for the current component
-	lbool searchBelow(int start_level, int nof_conflicts);
-	void analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit> & selectors,
+	bool analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit> & selectors,
 			int& out_btlevel, unsigned int &nblevels,
-			unsigned int &szWithoutSelectors, bool &flag);
-
+			unsigned int &szWithoutSelectors);
 	unsigned int computeLBDMC(const vec<Lit> & lits, int end);
 	unsigned int computeLBDMC(const Clause &c);
 
-	CRef implicitBCP();
+	/// Print stats of the component manager.
+	void printStatsOfCM() const;
 
 	// Data members
 	//
-	int limlevel;
-
-	int bklevel_final;
-	CRef cr_final;
-	bool noCurDLlit_final;
-
 	vec<char> ispvar;		// This is used only when preprocessing.
 	int npvars;				// boundary number between projection vars and non-projection vars
 	int npvars_isolated;	// Number of isolated projection vars
 
-	vec<Lit> unitcls;			// The list of learnt unit clauses
-	vec<Lit> punitcls;
 	ComponentManager cmpmgr;	// The manger for processing components
 	vec<vec<int>> occ_lists;
 
-private:
-	// For debug
-	void printModelIfGLT(int models);
-	void printTrail(int from, int end);
+	int limlevel;
+	vec<Lit> unitcls;			// The list of learnt unit clauses
+
+	bool last_suc;
+	int  last_bklevel;
+	CRef last_cr;
+	Lit  last_lit;
 
 };
 
@@ -115,6 +118,12 @@ inline void Counter::registerAsPVar(Var v, bool b) {
 	ispvar[v] = b;
 	npvars += b;
 }
+inline void Counter::registerAllVarsAsPVar(int nvars) {
+	ispvar.clear();
+	ispvar.growTo(nvars+1, true);
+	ispvar[nvars] = 0;
+	npvars = nvars;
+}
 inline int Counter::nPVars() const {
 	return npvars;
 }
@@ -122,7 +131,11 @@ inline int Counter::nIsoPVars() const {
 	return npvars_isolated;
 }
 
-inline void Counter::printStatsOfCM() {
+inline void Counter::printProblemStats(double time, const char *msg) const {
+	printf("c o Problem: %d vars (%d pvars), %d clauses, %"PRIu64" literals, %s %.2f s\n", nVars(), nPVars(), nClauses(), clauses_literals, msg, time);
+	fflush(stdout);
+}
+inline void Counter::printStatsOfCM() const {
 	cmpmgr.printStats();
 }
 

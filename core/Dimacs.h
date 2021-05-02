@@ -53,6 +53,8 @@ static void readClause(B& in, Solver& S, vec<Lit>& lits) {
 // Read projection vars
 template<class B, class Solver>
 static void readProjVars(B& in, Solver&S) {
+	if(S.mc) { skipLine(in); return; }
+
 	int     parsed_var;
 	for (;;){
 		parsed_var = parseInt(in);
@@ -127,7 +129,16 @@ static void parse_DIMACS_main(B& in, Solver& S) {
 	if (format == MC2020 && pvars == S.nPVars())
 		fprintf(stderr, "c o WARNING! DIMACS header mismatch: wrong number of pvars.\n");
 
-	S.registerAsPVar(S.nVars(), false); // Added by k-hasimt  (Assertion:  S.ispvar.size() == nVars()"+1")
+	if(S.mc) {
+		while (vars > S.nVars()) S.newVar();
+		S.registerAllVarsAsPVar(vars);
+		// Note: We adopt the varnum in the header(p cnf ...) as the number of all variables.
+		//       Sometimes the varnum in the header and the number of variables really appearing in the clauses are different.
+		//       In such cases, we prefer the header.
+	}
+	else
+		S.registerAsPVar(S.nVars(), false); // Added by k-hasimt  (Assertion:  S.ispvar.size() == nVars()"+1")
+
 
 	printf("c o Input format: ");
 	switch(format) {

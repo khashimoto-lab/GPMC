@@ -401,7 +401,7 @@ class ComponentCache {
 	unsigned long my_time_ = 0;
 
 public:
-	void init(int cachesize);
+	void init();
 
 	void add_descendant(CacheEntryID compid, CacheEntryID descendantid) {
 		assert(descendantid != entry(compid).first_descendant());
@@ -474,10 +474,10 @@ public:
 	// --- Added by k-hasimt --- BEGIN
 	inline void cleanAllDescendantsOf(CacheEntryID id);
 
-	void printStats() {
-		printf("Cache lookup          : %"PRIu64"\n", num_cache_look_ups_);
-		printf("Cache hit             : %"PRIu64"\n", num_cache_hits_);
-		printf("Cache reduce          : %"PRIu64"\n", num_cache_reduce_);
+	void printStats() const {
+		printf("c o Cache lookup          = %"PRIu64"\n", num_cache_look_ups_);
+		printf("c o Cache hit             = %"PRIu64"\n", num_cache_hits_);
+		printf("c o Cache reduce          = %"PRIu64"\n", num_cache_reduce_);
 	}
 	// --- Added by k-hasimt --- END
 
@@ -554,9 +554,11 @@ class ComponentManager {
 	bool hasThreshold_;
 	mpz_class norma_;
 
+	int fixed_level_;
+
 public:
 	ComponentManager() :
-		components(0), num_try_split(0) {
+		npvars_(0), components(0), num_try_split(0), hasThreshold_(false), fixed_level_(0) {
 	}
 
 	~ComponentManager()
@@ -568,7 +570,7 @@ public:
 	}
 
 	void init(int nvars, int npvars, const vec<CRef>& sclauses,
-			const ClauseAllocator& sca, int cachesize, bool hasThreshold, mpz_class norma);
+			const ClauseAllocator& sca, bool hasThreshold, mpz_class norma);
 
 	int splitComponent(const vec<lbool>& assigns);
 
@@ -625,9 +627,9 @@ public:
 	// Debug
 	void printDimacs(const vec<CRef>& clauses, const ClauseAllocator& ca, const vec<lbool>& assign);
 
-	void printStats() {
-		printf("Components            : %"PRIu64"\n", components);
-		printf("Split                 : %"PRIu64"\n", num_try_split);
+	void printStats() const {
+		printf("c o Components            = %"PRIu64"\n", components);
+		printf("c o Split                 = %"PRIu64"\n", num_try_split);
 		cache_.printStats();
 	}
 
@@ -640,7 +642,17 @@ public:
 	}
 
 	void printScore(Var v, double activity) {
-		printf("activity:%lf, var_freq:%lf\n", activity, var_frequency_[v]);
+		printf("c o activity:%lf, var_freq:%lf\n", activity, var_frequency_[v]);
+	}
+
+	bool checkfixedDL() {
+		if(fixed_level_+1 == dl_.size()) {
+			if(!dl_.back().isFirstBranch() && dl_.back().numUnprocessedSplitComp()==1) {
+				fixed_level_++;
+				return true;
+			}
+		}
+		return false;
 	}
 
 protected:
@@ -725,6 +737,8 @@ PackedComponent::PackedComponent(Component &rComp) {
 					+ 4;
 
 	unsigned * p = data_ = (unsigned*) malloc(sizeof(unsigned) * data_size);
+	if(p == NULL)
+		throw OutOfMemoryException();
 
 	unsigned int bitpos;
 

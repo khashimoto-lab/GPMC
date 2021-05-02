@@ -3,15 +3,53 @@
 #include "core/Component.h"
 #include "utils/Options.h"
 
+// #define USE_SYSINFO
+
+#ifdef USE_SYSINFO
+#include <sys/sysinfo.h>
+#endif
+
 using namespace GPMC;
 using namespace std;
+
+IntOption  opt_cachesize ("GPMC -- CACHE", "cs", "Maximum component cache size (MB) (not strict)", 4000, IntRange(1, INT32_MAX));
 
 unsigned PackedComponent::_bits_per_clause = 0;
 unsigned PackedComponent::_bits_per_variable = 0;
 unsigned PackedComponent::_variable_mask = 0;
 unsigned PackedComponent::_clause_mask = 0;
 
-void ComponentCache::init(int cachesize) {
+int availableRAMSize(){
+#ifdef USE_SYSINFO
+	struct sysinfo info;
+	sysinfo(&info);
+
+	uint64_t free_ram_bytes = info.freeram *(uint64_t) info.mem_unit;
+	int free_ram = free_ram_bytes / 1048576;
+
+	int maximum_cache_size = (int) opt_cachesize;
+
+	if (opt_cachesize <= 0 || free_ram <= 0) {
+		printf("c o Not enough memory to run.\n");
+		exit(1);
+	}
+
+	if (opt_cachesize > free_ram) {
+		maximum_cache_size = 7 * free_ram / 10;
+#ifdef DEBUG
+		printf("c o WARNING: Maximum cache size larger than free RAM available\n");
+		printf("c o Free RAM %d MB\n", free_ram);
+		printf("c o Maximum cache size : %d MB -> %d MB\n", (int) opt_cachesize, maximum_cache_size);
+#endif
+	}
+	return maximum_cache_size;
+
+#else
+	return opt_cachesize;
+#endif
+}
+
+void ComponentCache::init() {
 	table_.clear();
 	entry_base_.clear();
 	entry_base_.reserve(2000000);
@@ -20,13 +58,8 @@ void ComponentCache::init(int cachesize) {
 	free_entry_base_slots_.clear();
 	free_entry_base_slots_.reserve(10000);
 
-	maximum_cache_size_bytes = (int64_t) cachesize * 1048576;
+	maximum_cache_size_bytes = (int64_t) availableRAMSize() * 1048576;
 
-#ifdef DEBUG
-	cout << "Cache size:\t"
-			<< maximum_cache_size_bytes / 1048576 << " MB" << endl
-			<< endl;
-#endif
 	recompute_bytes_memory_usage();
 }
 
@@ -179,7 +212,7 @@ bool ComponentCache::deleteEntries() {
 	num_cached_components_ = entry_base_.size();
 	cache_bytes_memory_usage_ = recompute_bytes_memory_usage();
 #ifdef DEBUG
-	cout << "Cache reduced to size " << recompute_bytes_memory_usage() / 1000000 << "MB" << endl;
+	cout << "c o Cache reduced to size " << recompute_bytes_memory_usage() / 1000000 << "MB" << endl;
 	//cout << " \t entries: "<< entry_base_.size() - free_entry_base_slots_.size()<< endl;
 #endif
 	return true;
