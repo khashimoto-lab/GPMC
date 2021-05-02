@@ -1,0 +1,6 @@
+#!/bin/bash
+
+cd gpmc
+./build.sh r
+./clean.sh
+

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+./gpmc -mc $1
