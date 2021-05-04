@@ -1,4 +1,5 @@
 #include <gmpxx.h>
+#include <mpfr.h>
 #include "core/Counter.h"
 #include "mtl/Sort.h"
 #include "utils/System.h"
@@ -988,9 +989,17 @@ void Counter::printStats() const
 			printf("c s exact arb int 0\n");
 		} else {
 			printf("s SATISFIABLE\n");
-			// adopt an easy way for log10-estimate. not sure about the precision...
 			printf("c s type %s\n", mc ? "mc" : "pmc");
-			printf("c s log10-estimate %.15g\n", log10(mpz_get_d(npmodels.get_mpz_t())));
+
+			// printf("c s log10-estimate %.15g\n", log10(mpz_get_d(npmodels.get_mpz_t())));
+			mpfr_t x, y;
+			mpfr_init(x); mpfr_init(y);
+			mpfr_set_z(x, npmodels.get_mpz_t(), mpfr_get_default_rounding_mode());
+			mpfr_log10(y, x, mpfr_get_default_rounding_mode());
+			mpfr_printf("c s log10-estimate %.15Rg\n", y);
+			mpfr_clear(x);
+			mpfr_clear(y);
+
 			printf("c s exact arb int ");
 			mpz_out_str(stdout, 10, npmodels.get_mpz_t());
 			printf("\n");
