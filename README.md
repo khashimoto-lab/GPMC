@@ -4,6 +4,13 @@ GPMC is a projected model counter for CNF formulas.
 The source codes of this software are based on those of
 MiniSat-based Sat solver and SharpSAT 12.08.1.
 
+Note:  
+This branch is an exprimental one that tries to incorporate the techniques 
+(preprocessing and variable selecting heuristic by tree decomposition) of 
+SharpSAT-TD to gpmc, and we focus only on the "reptile" problem as a benchmark 
+problem here. 
+
+
 ## Installation
 See `INSTALL.md`.
 
