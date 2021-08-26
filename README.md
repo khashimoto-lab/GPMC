@@ -7,7 +7,7 @@ MiniSat-based Sat solver and SharpSAT 12.08.1.
 Note:  
 This branch is an exprimental one that tries to incorporate the techniques 
 (preprocessing and variable selecting heuristic by tree decomposition) of 
-SharpSAT-TD to gpmc, and we focus only on the "reptile" problem as a benchmark 
+[SharpSAT-TD](https://zenodo.org/record/4880703) into gpmc, and we focus only on the "reptile" problem as a benchmark 
 problem here. 
 
 

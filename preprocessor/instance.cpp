@@ -167,7 +167,16 @@ Instance::Instance(string input_file, bool weighted_) {
 			weights[Neg(lit)] = (double)1-w;
 			read_weights++;
 		} else if (tokens[0] == "c") {
-			continue;
+			if(tokens[1] == "p" && tokens[2] == "show") {
+				int i=3;
+				for(; i<tokens.size(); i++) {
+					int pvar = stoi(tokens[i]);
+					if(pvar == 0) break;
+					pvars.push_back(pvar);
+				}
+			}
+			else
+				continue;
 		} else if (format == 0 && tokens.size() == 4 && tokens[0] == "p" && tokens[1] == "cnf") {
 			format = 1;
 			vars = stoi(tokens[2]);
@@ -215,8 +224,12 @@ Instance::Instance(string input_file, bool weighted_) {
 	if (pline_clauses != read_clauses) {
 		cout<<"c o Warning: p line mismatch. Claimed clauses: "<<pline_clauses<<" actual clauses: "<<read_clauses<<endl;
 	}
-	cout<<"c o Parsed "<<vars<<" vars, "<<clauses.size()<<" clauses, and "<<read_weights<<" weights."<<endl;
+	// cout<<"c o Parsed "<<vars<<" vars, "<<clauses.size()<<" clauses, and "<<read_weights<<" weights."<<endl;
+	cout<<"c o Parsed "<<vars<<" vars, "<<clauses.size()<<" clauses, and "<<pvars.size()<<" pvars."<<endl;
 	UpdClauseInfo();
+
+	if(pvars.size()==0) pvars.resize(vars, true);
+	std::sort(pvars.begin(), pvars.end());
 }
 
 void Instance::PrintInfo() const {
@@ -230,6 +243,11 @@ void Instance::PrintInfo() const {
 
 void Instance::Print(std::ostream& out) const {
 	out<<"p cnf "<<vars<<" "<<clauses.size()<<endl;
+	out<<"c p show ";
+	for (const auto& var : pvars) {
+		out<<var<<" ";
+	}
+	out<<0<<endl;
 	for (const auto& clause : clauses) {
 		for (Lit lit : clause) {
 			out<<ToDimacs(lit)<<" ";

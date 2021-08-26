@@ -3,6 +3,9 @@
 #include "utils.hpp"
 #include "bitset.hpp"
 
+#include <fstream>
+#include <ostream>
+
 namespace sspp {
 
 template<typename T>
@@ -101,6 +104,8 @@ public:
 
   int MaximalIS(const Bitset& vs) const;
 
+  void printToFile(std::ostream& out); // added by k-hasimt
+
   Graph(const Graph& rhs) = default;
   Graph& operator=(const Graph& rhs) = default;
   
@@ -126,6 +131,9 @@ class TreeDecomposition {
  	Graph Chordal() const;
  	int Centroid() const;
   vector<int> GetOrd() const;
+
+    vector<bool> ispvar;
+	int pn;
  private:
  	int bs, n, width;
  	Graph tree;
@@ -133,6 +141,7 @@ class TreeDecomposition {
   void OdDes(int b, int p, int d, vector<int>& ret) const;
  	int CenDfs(int x, int p, int& cen) const;
  	bool dfs(int x, int v, int p, vector<int>& u) const;
+
 };
 
 // Implementation

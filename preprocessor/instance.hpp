@@ -28,6 +28,7 @@ struct Instance {
 	int vars = 0;
 	vector<vector<Lit>> clauses;
 	vector<vector<Lit>> learned_clauses;
+	vector<Var> pvars;
 
 	bool weighted = false;
 	double weight_factor = 1;

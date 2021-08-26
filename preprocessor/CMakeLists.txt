@@ -9,3 +9,6 @@ SET(preprocessor_SOURCES
 )
 
 ADD_LIBRARY(preprocessor ${preprocessor_SOURCES})
+
+add_executable (preproc main.cpp)
+target_link_libraries(preproc preprocessor $<$<CONFIG:Release>:-static>)

@@ -74,6 +74,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "core/Dimacs.h"
 // #include "core/Solver.h"
 #include "core/Counter.h"
+#include "preprocessor/treewidth.hpp"
 
 using namespace Glucose;
 using namespace GPMC;
@@ -89,7 +90,7 @@ static void SIGINT_interrupt(int signum) {
 
 	if(solver->stopping || !solver->postprocessing) {
 		// solver->printStats();
-		_exit(1);
+		// _exit(1);
 	} else {
 		solver->stopping = true;
 	}
@@ -159,6 +160,7 @@ int main(int argc, char** argv)
 		// interrupts:
 		signal(SIGINT, SIGINT_exit);
 		signal(SIGXCPU,SIGINT_exit);
+		signal(SIGTERM, SIGINT_exit);  // 15, SIGTERM
 
 		// Set limit on CPU-time:
 		if (cpu_lim != INT32_MAX){
@@ -191,17 +193,15 @@ int main(int argc, char** argv)
 		parse_DIMACS(in, S);
 		gzclose(in);
 
+		std::ifstream in_td(argv[2]);
+		sspp::TreeDecomposition tdecomp = sspp::decomp::TreedecompFromFile(in_td);
+		in_td.close();
+
 		double parsed_time = cpuTime();
 		if (S.verbosity_c) S.printProblemStats(parsed_time - initial_time, "parsing");
 
-		// Change to signal-handlers that will only notify the solver and allow it to terminate
-		// voluntarily:
-		signal(SIGINT,  SIGINT_interrupt);  //  2, SIGINT
-		signal(SIGABRT, SIGINT_exit);       //  6, SIGABRT
-		signal(SIGSEGV, SIGINT_exit);       // 11, SIGSEGV
-		signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
-		signal(SIGXCPU, SIGINT_interrupt);
-
+		S.SetIsPVar(tdecomp);
+		S.PrepareTWScore(tdecomp);
 		bool simp = S.presimplify();
 		if (S.verbosity_c) {
 			double simp_time = cpuTime();
@@ -217,6 +217,15 @@ int main(int argc, char** argv)
 		} else {
 			if(S.nIsoPVars() > 0 && S.hasThreshold)
 				mpz_cdiv_q_2exp(S.norma.get_mpz_t (), S.norma.get_mpz_t (), S.nIsoPVars());
+
+		// Change to signal-handlers that will only notify the solver and allow it to terminate
+		// voluntarily:
+		signal(SIGINT,  SIGINT_interrupt);  //  2, SIGINT
+		signal(SIGABRT, SIGINT_exit);       //  6, SIGABRT
+		signal(SIGSEGV, SIGINT_exit);       // 11, SIGSEGV
+		signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
+		signal(SIGXCPU, SIGINT_interrupt);
+
 
 			S.countModels();
 		}

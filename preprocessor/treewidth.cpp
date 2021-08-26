@@ -105,5 +105,42 @@ TreeDecomposition Treedecomp(const Graph& graph, double time, string tmp_dir) {
 	assert(dec.Verify(graph));
 	return dec;
 }
+// added by k-hasimt
+TreeDecomposition TreedecompFromFile(std::ifstream& in) {
+	TreeDecomposition dec(0, 0);
+	string tmp;
+	int claim_width = 0;
+	while (getline(in, tmp)) {
+		std::stringstream ss(tmp);
+		ss>>tmp;
+		if (tmp == "c") continue;
+		if (tmp == "s") {
+			ss>>tmp;
+			assert(tmp == "td");
+			int bs,nn;
+			ss>>bs>>claim_width>>nn;
+//			assert(nn == n);
+			claim_width--;
+			dec = TreeDecomposition(bs, nn);
+		} else if (tmp == "b") {
+			int bid;
+			ss>>bid;
+			vector<int> bag;
+			int v;
+			while (ss>>v) {
+				bag.push_back(v-1);
+			}
+			dec.SetBag(bid, bag);
+		} else {
+			int a = stoi(tmp);
+			int b;
+			ss>>b;
+			dec.AddEdge(a, b);
+		}
+	}
+	assert(dec.Width() <= claim_width);
+	cout << "c o width " << dec.Width() << endl;
+	return dec;
+}
 } // namespace decomp
 } // namespace sspp

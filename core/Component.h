@@ -574,7 +574,7 @@ public:
 
 	int splitComponent(const vec<lbool>& assigns);
 
-	Var pickBranchVar(const vec<double>& activity);
+	Var pickBranchVar(const vec<double>& activity, const vector<float>& extra_score);
 
 	// Decision Stack
 	Decision& topDecision() {

@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.0)
 project(gpmc CXX)
 
+add_subdirectory (preprocessor)
+add_subdirectory(flowcutter)
+
 file(GLOB CORE core/*.cc)
 file(GLOB UTILS utils/*.cc)
-# link_directories(/usr/local/lib)
+link_directories(/usr/local/lib)
 add_executable(gpmc ${CORE} ${UTILS})
 
 target_compile_options(gpmc 
@@ -19,11 +22,18 @@ target_compile_definitions(gpmc
 
 target_include_directories(gpmc 
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-#          /usr/local/include
+          /usr/local/include
 )
 
 # cmake >= 3.18 ??
 #target_link_directories(gpmc PRIVATE /usr/local/lib) 
 
-target_link_libraries(gpmc z gmp gmpxx $<$<CONFIG:Release>:-static>)
+target_link_libraries(gpmc z gmp gmpxx preprocessor $<$<CONFIG:Release>:-static>)
 # install(TARGETS gpmc DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/bin/)
+
+
+add_executable (flow_cutter_pace17 flowcutter/pace.cpp)
+# if(STATIC)
+SET_TARGET_PROPERTIES (flow_cutter_pace17 PROPERTIES LINK_SEARCH_START_STATIC 1)
+# endif(STATIC)
+target_link_libraries (flow_cutter_pace17 libflowcutter)

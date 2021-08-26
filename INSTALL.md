@@ -10,4 +10,4 @@
 ```
 $ ./build.sh r
 ```
-The binary executable file *gpmc* is put under bin/.
+The binary executable files, including *gpmc*, are put under bin/.

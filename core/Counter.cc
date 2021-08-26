@@ -23,6 +23,8 @@ static DoubleOption opt_bj_thd (_mc, "bjthd", "Backjumping threshold", 0.5, Doub
 static BoolOption opt_simp     (_mc, "rmvsatcl", "Remove satisfied clauses", true);
 static IntOption  opt_simp_thd (_mc, "rmvsatclthd", "Thereshold of removing satisfied clauses", 2, IntRange(0,INT32_MAX));
 
+static DoubleOption opt_coef   (_mc, "coef", "Coefficient tw", 1.0, DoubleRange(1, false, 1e10, false));
+
 //=================================================================================================
 // Constructor/Destructor:
 
@@ -159,10 +161,13 @@ void Counter::Compact() {
 
 	vec<double> activity2;
 	vec<char> polarity2;
+	vector<float> extra_score2(extra_score);
 	activity.copyTo(activity2);
 	activity.shrink(nVars()-varnum);
 	polarity.copyTo(polarity2);
 	polarity.shrink(nVars()-varnum);
+	// extra_score.resize(nVars()-varnum);
+	// extra_score.shrink_to_fit();
 
 	for(Var v=0; v < nVars(); v++) {
 		if(occurred[v]) {
@@ -170,6 +175,7 @@ void Counter::Compact() {
 				map[v] = new_idx;
 				activity[new_idx] = activity2[v];
 				polarity[new_idx] = polarity2[v];
+				extra_score[new_idx] = extra_score2[v];
 				new_idx++;
 			}
 			else nonpvars.push_(v);
@@ -182,6 +188,7 @@ void Counter::Compact() {
 		map[nonpvars[i]] = new_idx;
 		activity[new_idx] = activity2[nonpvars[i]];
 		polarity[new_idx] = polarity2[nonpvars[i]];
+		extra_score[new_idx] = extra_score2[nonpvars[i]];
 		new_idx++;
 	}
 	activity2.clear();
@@ -504,7 +511,7 @@ void Counter::count_main()
 		}
 
 		// DECIDE A LITERAL FROM TOP COMPONENT
-		Var dec_var = cmpmgr.pickBranchVar(activity);
+		Var dec_var = cmpmgr.pickBranchVar(activity, extra_score);
 		decisions++;
 
 		newDecisionLevel();
@@ -961,6 +968,59 @@ lbool Counter::searchBelow(int start_dl) {
 		}
 	}
 	return l_Undef;
+}
+
+void Counter::SetIsPVar(sspp::TreeDecomposition& tdec)
+{
+	tdec.ispvar.resize(nVars()+1);
+    for(int i=0; i<ispvar.size(); i++) {
+        tdec.ispvar[i+1]=ispvar[i];
+	}
+    tdec.pn = nPVars();
+}
+
+// copied from sharp-tw-unweighted
+void Counter::PrepareTWScore(const sspp::TreeDecomposition& tdec)
+{
+	const int n = nVars(); // n is #vars???
+	extra_score.resize(n);
+	if (n <= 2) {
+		return;
+	}
+
+	int width = tdec.Width();
+	auto ord = tdec.GetOrd();
+
+	int max_ord = 0;
+	for (int i = 0; i < n; i++) {
+		assert(ord[i] >= 1);
+		max_ord = max(max_ord, ord[i]);
+	}
+	assert(max_ord >= 1);
+	// Normalize
+	for (int i = 0; i < n; i++) {
+		extra_score[i] = max_ord - ord[i];
+		extra_score[i] /= (double)max_ord;
+		assert(extra_score[i] > -0.01 && extra_score[i] < 1.01);
+	}
+	// Now scores are between 0..1
+
+
+
+	double coef = opt_coef;
+/*
+    double rt = (double)n/(double)width;
+    if (rt > 40) {
+      coef = 1e4;
+    } else if (rt <= 40) {
+      coef *= rt/500.0;
+    }
+*/
+    // coef = min(coef, 1e7);
+	cout << "c o COEF: " << coef << " Width: " << width << endl;
+	for (int i = 0; i < n; i++) {
+		extra_score[i] *= coef;
+	}
 }
 
 //=================================================================================================

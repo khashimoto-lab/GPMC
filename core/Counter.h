@@ -4,6 +4,8 @@
 #include "core/Solver.h"
 #include "core/Component.h"
 
+#include "preprocessor/treewidth.hpp"
+
 using namespace Glucose;
 
 namespace GPMC {
@@ -27,6 +29,10 @@ public:
 	void registerAllVarsAsPVar(int nvars);
 	int nPVars() const;			// The number of non-isolated projection variables
 	int nIsoPVars() const;			// The number of isolated projection variables
+
+	// TreeWidth
+	void SetIsPVar(sspp::TreeDecomposition& tdec);
+	void PrepareTWScore(const sspp::TreeDecomposition& tdec);
 
 	void printProblemStats(double parsed_time, const char* msg) const;
 	void printStats() const;
@@ -110,6 +116,7 @@ protected:
 	CRef last_cr;
 	Lit  last_lit;
 
+	vector<float> extra_score;
 };
 
 // Inline methods

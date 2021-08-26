@@ -895,17 +895,21 @@ int TreeDecomposition::CenDfs(int b, int p, int& cen) const {
 		if (nb == p) continue;
 		int cintro = CenDfs(nb, b, cen);
 		intro += cintro;
-		if (cintro >= n/2) {
+//		if (cintro >= n/2) {
+        if (cintro >= pn/2) {
 			assert(cen);
 			return intro;
 		}
 	}
 	for (int v : bags[b]) {
-		if (p == 0 || !InBag(p, v)) {
-			intro++;
+		if (ispvar[v]) {
+			if (p == 0 || !InBag(p, v)) {
+				intro++;
+			}
 		}
 	}
-	if (intro >= n/2) {
+//	if (intro >= n/2) {
+	if (intro >= pn/2) {
 		cen = b;
 	}
 	return intro;
@@ -947,6 +951,7 @@ void TreeDecomposition::OdDes(int b, int p, int d, vector<int>& ret) const {
 
 vector<int> TreeDecomposition::GetOrd() const {
   int centroid = Centroid();
+
   assert(centroid >= 1 && centroid <= bs);
   vector<int> ret(n);
   OdDes(centroid, 0, 1, ret);
@@ -954,5 +959,18 @@ vector<int> TreeDecomposition::GetOrd() const {
     assert(ret[i] > 0);
   }
   return ret;
+}
+
+// added by k-hasimt
+void Graph::printToFile(std::ostream& out) {
+	auto es = Edges();
+	int ns = n();
+	int m = es.size();
+
+	out << "p tw " << ns-1 << " " << m << '\n';
+	for (auto e : es) {
+		out << e.F << " " << e.S << '\n';
+	}
+	out << std::flush;
 }
 } // namespace sspp

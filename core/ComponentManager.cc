@@ -241,7 +241,7 @@ void ComponentManager::searchComponent(Var seed_var, const vec<lbool>& assigns, 
 
 }
 
-Var ComponentManager::pickBranchVar(const vec<double>& activity)
+Var ComponentManager::pickBranchVar(const vec<double>& activity, const vector<float>& extra_score)
 {
 	// GPMC uses the lexicographical order of var_frequency and activity for choosing a decision var.
 	// ToDo: try other heuristics
@@ -256,18 +256,36 @@ Var ComponentManager::pickBranchVar(const vec<double>& activity)
 
 	int p;
 	for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
-		double score_f = var_frequency_[c[p]];
+		double score_f = var_frequency_[c[p]] + extra_score[c[p]];
 		double score_a = activity[c[p]];
 		if( score_f > max_score_f) {
 			max_score_f = score_f;
 			max_score_a = score_a;
 			maxv = c[p];
-		} else if ( score_f == max_score_f && score_a > max_score_a) {
+		} else if ( score_f >= max_score_f * 0.90 && score_a > max_score_a * 1.5) {
 			max_score_a = score_a;
 			maxv = c[p];
 		}
 	}
+/*
+	int p;
+	for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
+		if(var_frequency_[c[p]] > max_score_f) max_score_f = var_frequency_[c[p]];
+		if(activity[c[p]] > max_score_a)       max_score_a = activity[c[p]];
+	}
 
+	double max_score = -1;
+	for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
+		double score =  
+			  1.25 * (double)var_frequency_[c[p]]/max_score_f
+			+ (activity[c[p]]+1)/(max_score_a+1)
+			+ extra_score[c[p]];
+		if( score > max_score) {
+			max_score = score;
+			maxv = c[p];
+		}
+	}
+*/
 	assert(maxv != var_Undef);
 	return maxv;
 }

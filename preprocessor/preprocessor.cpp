@@ -151,7 +151,7 @@ void Preprocessor::Tighten(bool loop) {
 Instance Preprocessor::Preprocess(Instance inst, const string& techniques) {
 	weighted = inst.weighted;
 	weights = inst.weights;
-	return Preprocess(inst.vars, inst.clauses, techniques);
+	return Preprocess(inst.vars, inst.clauses, inst.pvars, techniques);
 }
 
 void Preprocessor::FailedLiterals() {
@@ -270,12 +270,30 @@ Instance Preprocessor::MapBack() {
 		assert(clause.size() >= 2);
 		ret.AddLearnedClause(clause);
 	}
+
 	free_vars = orig_vars - vars;
 	for (Var v = 1; v <= orig_vars; v++) {
 		if (assign[v]) {
 			free_vars--;
 		}
 	}
+	// added by k-hasimt
+	vector<bool> check(pvars.back()+1, false);
+	ret.pvars.clear();
+	for (Var v = 1; v <= vars; v++) {
+		Var ov = var_map[v];
+		if (std::binary_search(this->pvars.begin(), this->pvars.end(), ov)) {
+			ret.pvars.push_back(v);
+			check[ov] = true;
+		}
+	}
+	for (Var v : pvars) {
+		if (!assign[v] && !check[v]) {
+			ret.vars++;
+			ret.pvars.push_back(ret.vars);
+		}
+	}
+
 	if (weighted) {
 		ret.weighted = true;
 		ret.weights.resize(vars*2+2);
@@ -488,6 +506,9 @@ bool Preprocessor::EliminateDefSimplicial() {
 		int simps = 0;
 		vector<Var> extra(vars+1);
 		for (Var v = 1; v <= vars; v++) {
+			Var ov = var_map[v];
+			if (std::binary_search(this->pvars.begin(), this->pvars.end(), ov)) continue;
+
 			if (!graph.Neighbors(v).empty() && graph.IsSimp(v)) {
 				int poss = 0;
 				int negs = 0;
@@ -704,7 +725,7 @@ bool Preprocessor::DoTechniques(const string& techniques, int l, int r) {
 	return fixpoint;
 }
 
-Instance Preprocessor::Preprocess(int vars_, vector<vector<Lit>> clauses_, string techniques) {
+Instance Preprocessor::Preprocess(int vars_, vector<vector<Lit>> clauses_, vector<Var> pvars_, string techniques) {
 	if (techniques.empty() || techniques[0] != 'F') {
 		techniques = "F" + techniques;
 	}
@@ -712,6 +733,7 @@ Instance Preprocessor::Preprocess(int vars_, vector<vector<Lit>> clauses_, strin
 	assert(orig_vars == 0);
 	vars = vars_;
 	clauses = clauses_;
+	pvars = pvars_;
 	learned_clauses.clear();
 	timer.start();
 	orig_vars = vars;
