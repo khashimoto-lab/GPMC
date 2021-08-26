@@ -25,6 +25,8 @@ class Preprocessor {
  	void PropStren();
  	void Subsume();
  	void FailedLiterals();
+	void PreSat();
+	void BackBoneVariables();
  	void TakeUnits(vector<vector<Lit>>& cls);
  	void MapClauses(vector<vector<Lit>>& cls, Var& nvars, vector<Var>& map_to);
  	void Tighten(bool loop);

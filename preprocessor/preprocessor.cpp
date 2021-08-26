@@ -166,6 +166,61 @@ void Preprocessor::FailedLiterals() {
 	Subsume();
 }
 
+void Preprocessor::PreSat() {
+	Oracle oracle(vars, clauses, learned_clauses);
+	vector<Lit> assum;
+	if(!oracle.Solve(assum, false)) {
+		unsat = true;
+		cout<<"c o UNSAT"<<endl;
+		return;
+	}
+	cout<<"c o SAT"<<endl;
+
+	for (const auto& clause : oracle.LearnedClauses()) {
+		learned_clauses.push_back(clause);
+	}
+	Tighten(false);
+	Subsume();
+}
+
+void Preprocessor::BackBoneVariables() {
+	Oracle oracle(vars, clauses, learned_clauses);
+	vector<Lit> assum;
+	if(!oracle.Solve(assum, false)) {
+		unsat = true;
+		cout<<"c o UNSAT"<<endl;
+		return;
+	}
+	cout<<"c o SAT"<<endl;
+
+	int pvars=0;
+	vector<Lit> cand;
+	for (Var v = 1; v <= vars; v++){
+		Var ov = var_map[v];
+		if (std::binary_search(this->pvars.begin(), this->pvars.end(), ov)){
+			cand.push_back(oracle.LitVal(2*v) ? 2*v+1 : 2*v);
+			pvars++;
+		}
+	}
+	cout<<"c o PVars:" << pvars <<endl;
+
+	double start = timer.get();
+	int i=0;
+	for(auto lit : cand) {
+		if(!oracle.Solve({lit})) {
+			oracle.FreezeUnit(Neg(lit));
+			clauses.push_back({Neg(lit)});
+		}
+		i++;
+		if(i%50==0 && timer.get()-start > 3600.0) break;
+	}
+//	for (const auto& clause : oracle.LearnedClauses()) {
+//		learned_clauses.push_back(clause);
+//	}
+	Tighten(false);
+	Subsume();
+}
+
 void Preprocessor::Subsume() {
 	Subsumer subsumer;
 	clauses = subsumer.Subsume(clauses);
@@ -442,12 +497,14 @@ void Preprocessor::MergeAdjEquivs() {
 	for (Var v1 = 1; v1 <= vars; v1++) {
 		for (Var v2 = v1+1; v2 <= vars; v2++) {
 			if (!pg[v1][v2]) continue;
-			if (!oracle.Solve({PosLit(v1), PosLit(v2)}) && !oracle.Solve({NegLit(v1), NegLit(v2)})) {
+//			if (!oracle.Solve({PosLit(v1), PosLit(v2)}) && !oracle.Solve({NegLit(v1), NegLit(v2)})) {
+			if (oracle.FalseByProp({PosLit(v1), PosLit(v2)}) && oracle.FalseByProp({NegLit(v1), NegLit(v2)})) {
 				eq[PosLit(v2)].push_back(NegLit(v1));
 				eq[NegLit(v2)].push_back(PosLit(v1));
 				eq[NegLit(v1)].push_back(PosLit(v2));
 				eq[PosLit(v1)].push_back(NegLit(v2));
-			} else if (!oracle.Solve({PosLit(v1), NegLit(v2)}) && !oracle.Solve({NegLit(v1), PosLit(v2)})) {
+//			} else if (!oracle.Solve({PosLit(v1), NegLit(v2)}) && !oracle.Solve({NegLit(v1), PosLit(v2)})) {
+			} else if (oracle.FalseByProp({PosLit(v1), NegLit(v2)}) && oracle.FalseByProp({NegLit(v1), PosLit(v2)})) {
 				eq[PosLit(v2)].push_back(PosLit(v1));
 				eq[NegLit(v2)].push_back(NegLit(v1));
 				eq[PosLit(v1)].push_back(PosLit(v2));
@@ -490,9 +547,9 @@ void Preprocessor::MergeAdjEquivs() {
 			SortAndDedup(clauses.back());
 		}
 	}
-	for (const auto& clause : oracle.LearnedClauses()) {
-		learned_clauses.push_back(clause);
-	}
+//	for (const auto& clause : oracle.LearnedClauses()) {
+//		learned_clauses.push_back(clause);
+//	}
 	Subsume();
 }
 
@@ -683,6 +740,10 @@ bool Preprocessor::DoTechniques(const string& techniques, int l, int r) {
 			PropStren();
 		} else if (techniques[l] == 'V') {
 			BackBone();
+		} else if (techniques[l] == 'B') {
+			BackBoneVariables();
+		} else if (techniques[l] == 'R') {
+			PreSat();
 		} else if (techniques[l] == 'S') {
 			Sparsify();
 		} else if (techniques[l] == 'E') {
