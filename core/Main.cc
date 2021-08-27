@@ -193,15 +193,17 @@ int main(int argc, char** argv)
 		parse_DIMACS(in, S);
 		gzclose(in);
 
-		std::ifstream in_td(argv[2]);
-		sspp::TreeDecomposition tdecomp = sspp::decomp::TreedecompFromFile(in_td);
-		in_td.close();
+		if (argc == 3) {
+			std::ifstream in_td(argv[2]);
+			sspp::TreeDecomposition tdecomp = sspp::decomp::TreedecompFromFile(in_td);
+			in_td.close();
+			S.SetIsPVar(tdecomp);
+			S.PrepareTWScore(tdecomp);
+		}
 
 		double parsed_time = cpuTime();
 		if (S.verbosity_c) S.printProblemStats(parsed_time - initial_time, "parsing");
 
-		S.SetIsPVar(tdecomp);
-		S.PrepareTWScore(tdecomp);
 		bool simp = S.presimplify();
 		if (S.verbosity_c) {
 			double simp_time = cpuTime();

@@ -23,7 +23,7 @@ void PrintType(const sspp::Instance& ins) {
   if (ins.weighted) {
     cout<<"c s type wmc"<<endl;
   } else {
-    cout<<"c s type mc"<<endl;
+    cout<<"c s type pmc"<<endl;
   }
 }
 
@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
     PrintType(ins);
     cout<<"c s log10-estimate -inf"<<endl;
     cout<<"c s exact arb int 0"<<endl;
-    return 0;
+    return 10;
   }
   double ans0 = ins.weight_factor;
   double ans0log = ins.weight_factor_log;
@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
     PrintType(ins);
     PrintLog10(1, ans0log);
     PrintDouble(ans0);
-    return 0;
+    return 10;
   }
 
   std::ofstream cnfout(out_cnffile);
@@ -80,5 +80,6 @@ int main(int argc, char *argv[]) {
   primal.printToFile(out);
   out.close();
 
-  return 0;
+  if(ins.clauses.size() == 0) return 20;
+  else return 0;
 }
