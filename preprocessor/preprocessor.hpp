@@ -17,7 +17,7 @@ class Preprocessor {
  private:
  	bool DoTechniques(const string& techniques, int l, int r);
  	bool EliminateDefSimplicial();
- 	void MergeAdjEquivs();
+ 	void MergeAdjEquivs(const bool complete);
   void Sparsify();
  	Instance MapBack();
  	Instance UnsatInst();

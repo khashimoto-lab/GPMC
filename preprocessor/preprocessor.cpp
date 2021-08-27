@@ -476,7 +476,7 @@ void Preprocessor::eqdfs(Lit lit, Lit e, const vector<vector<Lit>>& eq, vector<L
 	}
 }
 
-void Preprocessor::MergeAdjEquivs() {
+void Preprocessor::MergeAdjEquivs(const bool complete) {
 	vector<vector<char>> pg(vars+1);
 	for (Var v = 1; v <= vars; v++) {
 		pg[v].resize(vars+1);
@@ -497,14 +497,14 @@ void Preprocessor::MergeAdjEquivs() {
 	for (Var v1 = 1; v1 <= vars; v1++) {
 		for (Var v2 = v1+1; v2 <= vars; v2++) {
 			if (!pg[v1][v2]) continue;
-//			if (!oracle.Solve({PosLit(v1), PosLit(v2)}) && !oracle.Solve({NegLit(v1), NegLit(v2)})) {
-			if (oracle.FalseByProp({PosLit(v1), PosLit(v2)}) && oracle.FalseByProp({NegLit(v1), NegLit(v2)})) {
+			if (complete && !oracle.Solve({PosLit(v1), PosLit(v2)}) && !oracle.Solve({NegLit(v1), NegLit(v2)})
+             || !complete && oracle.FalseByProp({PosLit(v1), PosLit(v2)}) && oracle.FalseByProp({NegLit(v1), NegLit(v2)})) {
 				eq[PosLit(v2)].push_back(NegLit(v1));
 				eq[NegLit(v2)].push_back(PosLit(v1));
 				eq[NegLit(v1)].push_back(PosLit(v2));
 				eq[PosLit(v1)].push_back(NegLit(v2));
-//			} else if (!oracle.Solve({PosLit(v1), NegLit(v2)}) && !oracle.Solve({NegLit(v1), PosLit(v2)})) {
-			} else if (oracle.FalseByProp({PosLit(v1), NegLit(v2)}) && oracle.FalseByProp({NegLit(v1), PosLit(v2)})) {
+			} else if (complete && !oracle.Solve({PosLit(v1), NegLit(v2)}) && !oracle.Solve({NegLit(v1), PosLit(v2)})
+					|| !complete && oracle.FalseByProp({PosLit(v1), NegLit(v2)}) && oracle.FalseByProp({NegLit(v1), PosLit(v2)})) {
 				eq[PosLit(v2)].push_back(PosLit(v1));
 				eq[NegLit(v2)].push_back(NegLit(v1));
 				eq[PosLit(v1)].push_back(PosLit(v2));
@@ -547,9 +547,12 @@ void Preprocessor::MergeAdjEquivs() {
 			SortAndDedup(clauses.back());
 		}
 	}
-//	for (const auto& clause : oracle.LearnedClauses()) {
-//		learned_clauses.push_back(clause);
-//	}
+
+	if (complete) {
+		for (const auto& clause : oracle.LearnedClauses()) {
+			learned_clauses.push_back(clause);
+		}
+	}
 	Subsume();
 }
 
@@ -746,8 +749,10 @@ bool Preprocessor::DoTechniques(const string& techniques, int l, int r) {
 			PreSat();
 		} else if (techniques[l] == 'S') {
 			Sparsify();
+		} else if (techniques[l] == 'e') {
+			MergeAdjEquivs(false);
 		} else if (techniques[l] == 'E') {
-			MergeAdjEquivs();
+			MergeAdjEquivs(true);
 		} else if (techniques[l] == 'G') {
 			bool s = EliminateDefSimplicial();
 			if (s) {
