@@ -25,7 +25,7 @@ public:
 
 	void registerAsPVar(Var v, bool b);	// Register a projection variable (if b is true)
 	void registerAllVarsAsPVar(int nvars);
-	void registerPVars(vec<Var> vars);
+	void registerPVars(vec<Var>& vars);
 	int nPVars() const;			// The number of non-isolated projection variables
 	int nIsoPVars() const;			// The number of isolated projection variables
 
@@ -126,7 +126,7 @@ inline void Counter::registerAllVarsAsPVar(int nvars) {
 	ispvar[nvars] = 0;
 	npvars = nvars;
 }
-inline void Counter::registerPVars(vec<Var> vars) {
+inline void Counter::registerPVars(vec<Var>& vars) {
 	ispvar.clear();
 	ispvar.growTo(nVars()+1, false);
 	for(int i=0; i<vars.size(); i++) {

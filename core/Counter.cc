@@ -329,13 +329,13 @@ void Counter::countModels(mpz_t result)
 	if (!simp) {
 		if (verbosity_c) { printf("c o solved by preprocessing.\n"); }
 		npmodels = 0;
-		result = 0;
+		mpz_set_ui(result, 0);
 		return;
 	} else if (nVars() == 0) {
 		if (verbosity_c) { printf("c o solved by preprocessing.\n"); }
 		npmodels = 1;
 		mpz_mul_2exp(npmodels.get_mpz_t (), npmodels.get_mpz_t (), nIsoPVars());
-		result = npmodels.get_mpz_t();
+		mpz_set(result, npmodels.get_mpz_t());
 		return;
 	}
 
@@ -346,7 +346,7 @@ void Counter::countModels(mpz_t result)
 	count_main();
 	cancelUntil(0);
 
-	result = npmodels.get_mpz_t ();
+	mpz_set(result, npmodels.get_mpz_t ());
 	return;
 }
 
