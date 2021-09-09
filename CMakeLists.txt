@@ -1,29 +1,19 @@
 cmake_minimum_required(VERSION 3.0)
 project(gpmc CXX)
 
-file(GLOB CORE core/*.cc)
-file(GLOB UTILS utils/*.cc)
-# link_directories(/usr/local/lib)
-add_executable(gpmc ${CORE} ${UTILS})
+link_directories(/usr/local/lib)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} /usr/local/include)
+add_compile_options("$<$<CONFIG:Debug>:-O0>")
+add_compile_options(-Wall -Wno-parentheses -Wno-format -Wno-sign-compare -Wno-unused-variable -Wno-unused-result)
+add_compile_options("$<$<CXX_COMPILER_ID:GNU>:-Wno-literal-suffix;-Wno-class-memaccess>")
+add_compile_options("$<$<CXX_COMPILER_ID:Clang>:-Wno-reserved-user-defined-literal;-Wno-gnu-array-member-paren-init>")
 
-target_compile_options(gpmc 
-  PRIVATE $<$<CONFIG:Debug>:-O0> -Wall -Wno-parentheses -Wno-format -Wno-sign-compare -Wno-unused-variable -Wno-unused-result
-  $<$<CXX_COMPILER_ID:GNU>:-Wno-literal-suffix -Wno-class-memaccess>
-  $<$<CXX_COMPILER_ID:Clang>:-Wno-reserved-user-defined-literal -Wno-gnu-array-member-paren-init>
-)
-
+add_library(gpmc STATIC core/ComponentCache.cc core/ComponentManager.cc core/Counter.cc core/Solver.cc utils/Options.cc utils/System.cc)
 target_compile_definitions(gpmc 
   PRIVATE $<$<CONFIG:Debug>:DEBUG>
            __STDC_FORMAT_MACROS __STDC_LIMIT_MACROS
 )
 
-target_include_directories(gpmc 
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-#          /usr/local/include
-)
-
-# cmake >= 3.18 ??
-#target_link_directories(gpmc PRIVATE /usr/local/lib) 
-
-target_link_libraries(gpmc z gmp gmpxx $<$<CONFIG:Release>:-static>)
-# install(TARGETS gpmc DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/bin/)
+add_executable(gpmc-bin core/Main.cc)
+set_target_properties(gpmc-bin PROPERTIES OUTPUT_NAME gpmc)
+target_link_libraries(gpmc-bin gpmc z gmp gmpxx $<$<CONFIG:Release>:-static>)
