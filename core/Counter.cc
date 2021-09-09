@@ -317,11 +317,37 @@ bool Counter::simplify()
 
 //=================================================================================================
 // Major methods:
-void Counter::countModels()
+void Counter::countModels(mpz_t result)
 {
+	double start_time = cpuTime();
+	bool simp = presimplify();
+	if (verbosity_c) {
+		double simp_time = cpuTime();
+		if (verbosity_c) { printProblemStats(simp_time - start_time, "simplifying"); }
+	}
+
+	if (!simp) {
+		if (verbosity_c) { printf("c o solved by preprocessing.\n"); }
+		npmodels = 0;
+		result = 0;
+		return;
+	} else if (nVars() == 0) {
+		if (verbosity_c) { printf("c o solved by preprocessing.\n"); }
+		npmodels = 1;
+		mpz_mul_2exp(npmodels.get_mpz_t (), npmodels.get_mpz_t (), nIsoPVars());
+		result = npmodels.get_mpz_t();
+		return;
+	}
+
+	if(nIsoPVars() > 0 && hasThreshold)
+		mpz_cdiv_q_2exp(norma.get_mpz_t (), norma.get_mpz_t (), nIsoPVars());
+
 	solves = starts = 0;
 	count_main();
 	cancelUntil(0);
+
+	result = npmodels.get_mpz_t ();
+	return;
 }
 
 void Counter::count_main()

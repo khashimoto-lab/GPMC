@@ -21,10 +21,11 @@ public:
 	//
 	bool presimplify();			// Simplification before model counting
 	bool simplify();
-	void countModels();			// Main count method
+	void countModels(mpz_t result);		// Main count method
 
 	void registerAsPVar(Var v, bool b);	// Register a projection variable (if b is true)
 	void registerAllVarsAsPVar(int nvars);
+	void registerPVars(vec<Var> vars);
 	int nPVars() const;			// The number of non-isolated projection variables
 	int nIsoPVars() const;			// The number of isolated projection variables
 
@@ -124,6 +125,14 @@ inline void Counter::registerAllVarsAsPVar(int nvars) {
 	ispvar.growTo(nvars+1, true);
 	ispvar[nvars] = 0;
 	npvars = nvars;
+}
+inline void Counter::registerPVars(vec<Var> vars) {
+	ispvar.clear();
+	ispvar.growTo(nVars()+1, false);
+	for(int i=0; i<vars.size(); i++) {
+		assert(vars[i] < nVars());
+		registerAsPVar(vars[i], true);
+	}
 }
 inline int Counter::nPVars() const {
 	return npvars;

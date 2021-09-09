@@ -128,13 +128,6 @@ int main(int argc, char** argv)
 		IntOption    mem_lim("MAIN", "mem-lim","Limit on memory usage in megabytes.\n", INT32_MAX, IntRange(0, INT32_MAX));
 		StringOption opt_threshold ("GPMC -- MAIN", "upto", "Stop when it finds #models >= threshold. An input threshold should be a natural number.");
 
-		printf("c o "GPMC_VERSION"\n");
-		printf("c o Command: ");
-		for (int i=0; i < argc; i++)
-			printf("%s ", argv[i]);
-		printf("\n");
-		fflush(stdout);
-
 		parseOptions(argc, argv, true);
 
 		Counter S;
@@ -142,6 +135,15 @@ int main(int argc, char** argv)
 
 		S.verbosity_c = verb;
 		S.verbosity = 0;
+
+		if(S.verbosity_c) {
+			printf("c o "GPMC_VERSION"\n");
+			printf("c o Command: ");
+			for (int i=0; i < argc; i++)
+				printf("%s ", argv[i]);
+			printf("\n");
+			fflush(stdout);
+		}
 
 		S.hasThreshold = (opt_threshold != NULL);
 		if(S.hasThreshold) {
@@ -202,25 +204,8 @@ int main(int argc, char** argv)
 		signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
 		signal(SIGXCPU, SIGINT_interrupt);
 
-		bool simp = S.presimplify();
-		if (S.verbosity_c) {
-			double simp_time = cpuTime();
-			if (S.verbosity_c) { S.printProblemStats(simp_time - parsed_time, "simplifying"); }
-		}
-		if (!simp) {
-			if (S.verbosity_c) { printf("c o solved by preprocessing.\n"); }
-			S.npmodels = 0;
-		} else if (S.nVars() == 0) {
-			if (S.verbosity_c) { printf("c o solved by preprocessing.\n"); }
-			S.npmodels = 1;
-			mpz_mul_2exp(S.npmodels.get_mpz_t (), S.npmodels.get_mpz_t (), S.nIsoPVars());
-		} else {
-			if(S.nIsoPVars() > 0 && S.hasThreshold)
-				mpz_cdiv_q_2exp(S.norma.get_mpz_t (), S.norma.get_mpz_t (), S.nIsoPVars());
-
-			S.countModels();
-		}
-
+		mpz_t dummy;
+		S.countModels(dummy);
 		S.printStats();
 		exit(0);
 

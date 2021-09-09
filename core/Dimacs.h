@@ -139,13 +139,14 @@ static void parse_DIMACS_main(B& in, Solver& S) {
 	else
 		S.registerAsPVar(S.nVars(), false); // Added by k-hasimt  (Assertion:  S.ispvar.size() == nVars()"+1")
 
-
-	printf("c o Input format: ");
-	switch(format) {
-	case CNFCR: printf("CNF+CR\n"); break;
-	case MC2020: printf("MC2020\n");break;
-	case MC2021: printf("MC2021\n");break;
-	default: printf("Unknown\n");
+	if(S.verbosity_c) {
+		printf("c o Input format: ");
+		switch(format) {
+		case CNFCR: printf("CNF+CR\n"); break;
+		case MC2020: printf("MC2020\n");break;
+		case MC2021: printf("MC2021\n");break;
+		default: printf("Unknown\n");
+		}
 	}
 }
 
