@@ -204,8 +204,7 @@ int main(int argc, char** argv)
 		signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
 		signal(SIGXCPU, SIGINT_interrupt);
 
-		mpz_t dummy;
-		S.countModels(dummy);
+		S.countModels();
 		S.printStats();
 		exit(0);
 

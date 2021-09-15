@@ -21,7 +21,7 @@ public:
 	//
 	bool presimplify();			// Simplification before model counting
 	bool simplify();
-	void countModels(mpz_t result);		// Main count method
+	bool countModels();		    // Main count method
 
 	void registerAsPVar(Var v, bool b);	// Register a projection variable (if b is true)
 	void registerAllVarsAsPVar(int nvars);

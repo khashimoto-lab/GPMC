@@ -317,7 +317,7 @@ bool Counter::simplify()
 
 //=================================================================================================
 // Major methods:
-void Counter::countModels(mpz_t result)
+bool Counter::countModels()
 {
 	double start_time = cpuTime();
 	bool simp = presimplify();
@@ -329,14 +329,12 @@ void Counter::countModels(mpz_t result)
 	if (!simp) {
 		if (verbosity_c) { printf("c o solved by preprocessing.\n"); }
 		npmodels = 0;
-		mpz_set_ui(result, 0);
-		return;
+		return false;
 	} else if (nVars() == 0) {
 		if (verbosity_c) { printf("c o solved by preprocessing.\n"); }
 		npmodels = 1;
 		mpz_mul_2exp(npmodels.get_mpz_t (), npmodels.get_mpz_t (), nIsoPVars());
-		mpz_set(result, npmodels.get_mpz_t());
-		return;
+		return true;
 	}
 
 	if(nIsoPVars() > 0 && hasThreshold)
@@ -346,8 +344,7 @@ void Counter::countModels(mpz_t result)
 	count_main();
 	cancelUntil(0);
 
-	mpz_set(result, npmodels.get_mpz_t ());
-	return;
+	return true;
 }
 
 void Counter::count_main()
@@ -1022,22 +1019,22 @@ void Counter::printStats() const
 		printf("c o [Result]\n");
 	}
 	if(!asynch_interrupt) {
-		if(hasThreshold) {
-			printf("c o #pmc >= ");
+		printf("s %s\n", npmodels>0 ? "SATISFIABLE" : "UNSATISFIABLE");
+		printf("c s type %s\n", mc ? "mc" : "pmc");
+		if(hasThreshold && npmodels >= norma_orig) {
+			printf("c o upto=");
 			mpz_out_str(stdout, 10, norma_orig.get_mpz_t());
-			printf(" ?\n");
-			printf("c s %s\n", npmodels>=norma ? "YES" : "NO");
+			printf("\n");
+			printf("c s lower bound arb int ");
+			mpz_out_str(stdout, 10, npmodels.get_mpz_t());
+			printf("\n");
 		} else {
 			if(npmodels == 0 ) {
-				printf("s UNSATISFIABLE\n");
-				printf("c s type %s\n", mc ? "mc" : "pmc");
-				printf("c s log10-estimate %.15g\n", log10(0));
+//				printf("c s log10-estimate %.15g\n", log10(0));
 				printf("c s exact arb int 0\n");
 			} else {
-				printf("s SATISFIABLE\n");
-				// adopt an easy way for log10-estimate. not sure about the precision...
-				printf("c s type %s\n", mc ? "mc" : "pmc");
-				printf("c s log10-estimate %.15g\n", log10(mpz_get_d(npmodels.get_mpz_t())));
+//				// adopt an easy way for log10-estimate. not sure about the precision...
+//				printf("c s log10-estimate %.15g\n", log10(mpz_get_d(npmodels.get_mpz_t())));
 				printf("c s exact arb int ");
 				mpz_out_str(stdout, 10, npmodels.get_mpz_t());
 				printf("\n");
@@ -1045,7 +1042,7 @@ void Counter::printStats() const
 		}
 	} else {
 		if(postprocessing) {
-			printf("s %s\n", npmodels>0 ? "SATISFIABLE" : "UNSATISFIABLE");
+			printf("s %s\n", npmodels>0 ? "SATISFIABLE" : "UNKNOWN");
 			printf("c s type %s\n", mc ? "mc" : "pmc");
 			printf("c s lower bound arb int ");
 			mpz_out_str(stdout, 10, npmodels.get_mpz_t());
