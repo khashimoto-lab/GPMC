@@ -5,6 +5,7 @@
 #include "core/SolverTypes.h"
 
 #include <gmpxx.h>
+#include "mpfr/mpreal.h"
 #include <vector>
 #include <math.h>
 
@@ -18,6 +19,7 @@ typedef int ClID;
 
 typedef unsigned CacheEntryID;
 
+template <class T_data>
 class Decision {
 	int trail_pos_;
 	bool cur_branch_;
@@ -26,19 +28,16 @@ class Decision {
 	unsigned splitcompFrom_;	// [From, End)
 	unsigned splitcompEnd_;
 
-	mpz_class models_[2];
+	T_data models_[2];
+	bool hasmodel_[2];
 
-	bool hasThreshold_;
-	mpz_class norma_total_[2] = {0, 0};
-	mpz_class norma_cur_ = 0;
+	T_data branch_weight_;
 
 public:
-	Decision(int trail_pos, unsigned basecomp, bool hasThreshold, mpz_class norma) :
+	Decision(int trail_pos, unsigned basecomp) :
 		trail_pos_(trail_pos), cur_branch_(false), basecomp_(basecomp),
-		splitcompFrom_(basecomp + 1), splitcompEnd_(basecomp + 1),
-		models_({ 0, 0 }), hasThreshold_(hasThreshold) {
-		norma_cur_ = norma;
-		norma_total_[0] = norma;
+		splitcompFrom_(basecomp + 1), splitcompEnd_(basecomp + 1), models_{ 0, 0 }, hasmodel_{false, false} {
+		branch_weight_ = 1;
 	}
 
 	int trailPos() {
@@ -54,7 +53,6 @@ public:
 	}
 	void changeBranch() {
 		cur_branch_ = true;
-		if(hasThreshold_) calcSecondNorma();
 	}
 
 	//
@@ -77,54 +75,57 @@ public:
 	}
 
 	// Methods on models
-	const mpz_class totalModels() const {
+	const T_data totalModels() const {
 		return models_[0] + models_[1];
 	}
 
-	const mpz_class currentBranchModels() const {
+	const bool hasModel() const {
+		return hasmodel_[false] || hasmodel_[true];
+	}
+
+	const T_data currentBranchModels() const {
 		return models_[cur_branch_];
 	}
 
 	bool isUnSAT() {
-		return models_[cur_branch_] == 0;
+		// return models_[cur_branch_] == 0;
+		return !hasmodel_[cur_branch_];
 	}
 
-	void increaseModels(const mpz_class &nmodels) {
-		if (models_[cur_branch_] == 0)
-			models_[cur_branch_] = nmodels;
-		else
-			models_[cur_branch_] *= nmodels;
+	void increaseModels(const mpz_class &nmodels, bool found = true) {
+		if(found) {
+			if(hasmodel_[cur_branch_])
+				models_[cur_branch_] *= nmodels;
+			else
+				models_[cur_branch_] = nmodels;
 
-		if(hasThreshold_ && models_[cur_branch_] != 0)
-			mpz_cdiv_q(norma_cur_.get_mpz_t(),norma_total_[cur_branch_].get_mpz_t(), models_[cur_branch_].get_mpz_t());
-	}
-	void increaseModels(int nmodels) {
-		if (nmodels == 0) {
+		} else {
 			models_[cur_branch_] = 0;
-			return;
 		}
-		if (models_[cur_branch_] == 0)
-			models_[cur_branch_] = nmodels;
-		else
-			models_[cur_branch_] *= nmodels;
-
-		if(hasThreshold_ && models_[cur_branch_] != 0)
-			mpz_cdiv_q(norma_cur_.get_mpz_t(),norma_total_[cur_branch_].get_mpz_t(), models_[cur_branch_].get_mpz_t());
+		hasmodel_[cur_branch_] = found;
 	}
 
-	bool satisfyNorma() {
-		return models_[cur_branch_] >= norma_total_[cur_branch_];
+	void increaseModels(const mpfr::mpreal &nmodels, bool found = true) {
+		if(found) {
+			if(hasmodel_[cur_branch_])
+				models_[cur_branch_] *= nmodels;
+			else
+				models_[cur_branch_] = branch_weight_ * nmodels;
+		} else {
+			models_[cur_branch_] = 0;
+		}
+		hasmodel_[cur_branch_] = found;
 	}
-	void calcSecondNorma() {
-		norma_total_[1] = norma_total_[0] - models_[0];
-		norma_cur_ = norma_total_[1];
+
+	void setBranchWeight(const T_data &w) {
+		branch_weight_ = w;
 	}
-	mpz_class getCurNorma() {
-		return norma_cur_;
+	void mulBranchWeight(const T_data &w) {
+		// cout << w << endl;
+		branch_weight_ *= w;
 	}
-	void resetNorma() {
-		norma_cur_ = norma_total_[cur_branch_];
-	}
+
+	vector<unsigned> dec_cands;
 };
 
 class Component {
@@ -200,6 +201,7 @@ public:
 
 };
 
+template <class T_data>
 class PackedComponent {
 private:
 	static unsigned _bits_per_clause;
@@ -225,7 +227,7 @@ protected:
 	unsigned clauses_ofs_ = 0;
 	unsigned hashkey_ = 0;
 
-	mpz_class model_count_;
+	T_data model_count_;
 	unsigned creation_time_ = 0;
 
 public:
@@ -234,7 +236,7 @@ public:
 
 	inline PackedComponent(Component& rComp);
 
-	PackedComponent(Component & rComp, const mpz_class &model_count, unsigned long time) :
+	PackedComponent(Component & rComp, const T_data &model_count, unsigned long time) :
 		PackedComponent(rComp) {
 		model_count_ = model_count;
 		creation_time_ = time;
@@ -262,10 +264,10 @@ public:
 		creation_time_ = time;
 	}
 
-	const mpz_class & model_count() const {
+	const T_data & model_count() const {
 		return model_count_;
 	}
-	void set_model_count(const mpz_class &rn) {
+	void set_model_count(const T_data &rn) {
 		model_count_ = rn;
 	}
 
@@ -292,7 +294,8 @@ public:
 
 };
 
-class CachedComponent: public PackedComponent {
+template <class T_data>
+class CachedComponent: public PackedComponent<T_data> {
 
 	// the position where this
 	// component is stored in the component stack
@@ -311,12 +314,12 @@ public:
 	CachedComponent() {
 	}
 
-	CachedComponent(Component &comp, const mpz_class &model_count, unsigned long time) :
-		PackedComponent(comp, model_count, time) {
+	CachedComponent(Component &comp, const T_data &model_count, unsigned long time) :
+		PackedComponent<T_data>(comp, model_count, time) {
 	}
 
 	CachedComponent(Component &comp) :
-		PackedComponent(comp) {
+		PackedComponent<T_data>(comp) {
 	}
 
 	// a cache entry is deletable
@@ -339,18 +342,15 @@ public:
 		// before deleting the contents of this component,
 		// we should make sure that this component is not present in the component stack anymore!
 		assert(component_stack_id_ == 0);
-		if (data_)
-			delete data_;
-		data_ = nullptr;
+		if (this->data_)
+			delete this->data_;
+		this->data_ = nullptr;
 	}
-
 	unsigned long SizeInBytes() const {
 		return sizeof(CachedComponent)
-				+ PackedComponent::data_size() * sizeof(unsigned)
-				// and add the memory usage of model_count_
-				// which is:
-				+ sizeof(mpz_class)
-				+ model_count().get_mpz_t()->_mp_size * sizeof(mp_limb_t);
+				+ PackedComponent<T_data>::data_size() * sizeof(unsigned)
+				+ sizeof(T_data);
+				// ToDo: How to estimate the actual data size of mpz_class/mpfr::mpreal
 	}
 
 	void set_father(CacheEntryID f) {
@@ -374,8 +374,11 @@ public:
 	}
 };
 
+template <class T_data> class ComponentCache;
+
+template <class T_data>
 class CacheBucket: protected vector<CacheEntryID> {
-	friend class ComponentCache;
+	friend class ComponentCache<T_data>;
 
 public:
 
@@ -386,13 +389,14 @@ public:
 	}
 };
 
+template <class T_data>
 class ComponentCache {
-	vector<CachedComponent *> entry_base_;
+	vector<CachedComponent<T_data> *> entry_base_;
 	vector<CacheEntryID> free_entry_base_slots_;
 
 	// the actual hash table
 	// by means of which the cache is accessed
-	vector<CacheBucket *> table_;
+	vector<CacheBucket<T_data> *> table_;
 
 	//	  SolverConfiguration &config_;
 	//	  DataAndStatistics &statistics_;
@@ -430,7 +434,7 @@ public:
 				delete pentry;
 	}
 
-	CachedComponent &entry(CacheEntryID id) {
+	CachedComponent<T_data> &entry(CacheEntryID id) {
 		assert(entry_base_.size() > id);
 		assert(entry_base_[id] != nullptr);
 		return *entry_base_[id];
@@ -459,11 +463,11 @@ public:
 	}
 
 	// store the number in model_count as the model count of CacheEntryID id
-	inline void storeValueOf(CacheEntryID id, const mpz_class &model_count);
+	inline void storeValueOf(CacheEntryID id, const T_data &model_count);
 
 	// check if the cache contains the modelcount of comp
 	// if so, return true and out_model_count contains that model count
-	bool requestValueOf(Component &comp, mpz_class &out_model_count);
+	bool requestValueOf(Component &comp, T_data &out_model_count);
 
 	bool deleteEntries();
 	void deleteallentries();
@@ -511,10 +515,10 @@ private:
 		return ofs % table_.size();
 	}
 
-	CacheBucket &at(unsigned int ofs) {
+	CacheBucket<T_data> &at(unsigned int ofs) {
 		if (table_[ofs] == NULL) {
 			num_occupied_buckets_++;
-			table_[ofs] = new CacheBucket();
+			table_[ofs] = new CacheBucket<T_data>();
 		}
 		return *table_[ofs];
 	}
@@ -524,6 +528,7 @@ private:
 	}
 };
 
+template <class T_data>
 class ComponentManager {
 	enum scStateT {
 		SC_NOT_CANDIDATE, SC_CANDIDATE, SC_SEEN, SC_DONE
@@ -546,19 +551,18 @@ class ComponentManager {
 	uint64_t components;
 	uint64_t num_try_split;
 
-	vector<Decision> dl_;
+	vector<Decision<T_data>> dl_;
 	vector<Component*> comp_stack_;
 
-	ComponentCache cache_;
+	ComponentCache<T_data> cache_;
 
-	bool hasThreshold_;
-	mpz_class norma_;
+	bool weighted_;
 
 	int fixed_level_;
 
 public:
 	ComponentManager() :
-		npvars_(0), components(0), num_try_split(0), hasThreshold_(false), fixed_level_(0) {
+		npvars_(0), components(0), num_try_split(0), weighted_(false), fixed_level_(0) {
 	}
 
 	~ComponentManager()
@@ -569,25 +573,39 @@ public:
 		}
 	}
 
-	void init(int nvars, int npvars, const vec<CRef>& sclauses,
-			const ClauseAllocator& sca, bool hasThreshold, mpz_class norma);
+	void init(bool weighted, int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca);
 
-	int splitComponent(const vec<lbool>& assigns);
+	int splitComponent(const vec<lbool>& assigns, const vec<T_data>& lit_weight = {});
 
-	Var pickBranchVar(const vec<double>& activity);
+	Var pickBranchVar(const vec<double>& activity, const vec<double>& tdscore);
 
 	// Decision Stack
-	Decision& topDecision() {
+	Decision<T_data>& topDecision() {
 		return dl_.back();
 	}
-	Decision& prevDecision() {
+	Decision<T_data>& prevDecision() {
 		return *(dl_.end() - 2);
 	}
 	void pushDecision(int trailp) {
-		dl_.push_back(Decision(trailp, comp_stack_.size() - 1, hasThreshold_, topDecision().getCurNorma()));
+		dl_.push_back(Decision<T_data>(trailp, comp_stack_.size() - 1));
 	}
 	void popDecision() {
 		dl_.pop_back();
+	}
+
+	void setDecCand() {
+		vector<unsigned>& dec_cands = dl_.back().dec_cands;
+		dec_cands.resize(npvars_+1);
+		dec_cands[npvars_]++;
+
+		Component& c = topComponent();
+		int p;
+		for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
+			dec_cands[c[p]] = dec_cands[npvars_];
+		}
+	}
+	bool isDecCand(Var x) {
+		return dl_.back().dec_cands[x] == dl_.back().dec_cands[npvars_];
 	}
 
 	// Component Stack
@@ -602,11 +620,11 @@ public:
 		dl_.back().nextSplitComp();
 	}
 
-	ComponentCache &cache() {
+	ComponentCache<T_data> &cache() {
 		return cache_;
 	}
 
-	void cacheModelCountOf(unsigned stack_comp_id, const mpz_class &value) {
+	void cacheModelCountOf(unsigned stack_comp_id, const T_data &value) {
 		//if (config_.perform_component_caching && (config_.perform_component_caching_in_sat || !isNotCounting()))
 		cache_.storeValueOf(stack_comp_id, value);
 	}
@@ -679,7 +697,8 @@ protected:
 			int& nvar_in_comp, int& ncls_in_comp);
 };
 
-bool PackedComponent::equals(const PackedComponent &comp) const {
+template <class T_data>
+bool PackedComponent<T_data>::equals(const PackedComponent<T_data> &comp) const {
 	if (clauses_ofs_ != comp.clauses_ofs_)
 		return false;
 
@@ -692,7 +711,8 @@ bool PackedComponent::equals(const PackedComponent &comp) const {
 	return *p == *r && *(p + 1) == *(r + 1);
 }
 
-PackedComponent::PackedComponent(Component &rComp) {
+template <class T_data>
+PackedComponent<T_data>::PackedComponent(Component &rComp) {
 	int max_diff = 0;
 	Var v1, v2;
 	ClID c1, c2;
@@ -793,7 +813,8 @@ PackedComponent::PackedComponent(Component &rComp) {
 	hashkey_ = hashkey_vars + (((unsigned long) hashkey_clauses) << 16);
 }
 
-void ComponentCache::cleanPollutionsInvolving(CacheEntryID id) {
+template <class T_data>
+void ComponentCache<T_data>::cleanPollutionsInvolving(CacheEntryID id) {
 	CacheEntryID father = entry(id).father();
 	if (entry(father).first_descendant() == id) {
 		entry(father).set_first_descendant(entry(id).next_sibling());
@@ -820,7 +841,8 @@ void ComponentCache::cleanPollutionsInvolving(CacheEntryID id) {
 	eraseEntry(id);
 }
 
-void ComponentCache::removeFromHashTable(CacheEntryID id) {
+template <class T_data>
+void ComponentCache<T_data>::removeFromHashTable(CacheEntryID id) {
 	unsigned int v = clip(entry(id).hashkey());
 	if (isBucketAt(v))
 		for (auto it = table_[v]->begin(); it != table_[v]->end(); it++) {
@@ -832,7 +854,8 @@ void ComponentCache::removeFromHashTable(CacheEntryID id) {
 		}
 }
 
-void ComponentCache::removeFromDescendantsTree(CacheEntryID id) {
+template <class T_data>
+void ComponentCache<T_data>::removeFromDescendantsTree(CacheEntryID id) {
 	assert(hasEntry(id));
 	// we need a father for this all to work
 	assert(entry(id).father());
@@ -865,8 +888,9 @@ void ComponentCache::removeFromDescendantsTree(CacheEntryID id) {
 	}
 }
 
-void ComponentCache::storeValueOf(CacheEntryID id, const mpz_class &model_count) {
-	CacheBucket &bucket = at(clip(entry(id).hashkey()));
+template <class T_data>
+void ComponentCache<T_data>::storeValueOf(CacheEntryID id, const T_data &model_count) {
+	CacheBucket<T_data> &bucket = at(clip(entry(id).hashkey()));
 	// when storing the new model count the size of the model count
 	// and hence that of the component will change
 	cache_bytes_memory_usage_ -= entry(id).SizeInBytes();
@@ -878,7 +902,8 @@ void ComponentCache::storeValueOf(CacheEntryID id, const mpz_class &model_count)
 }
 
 // --- Added by k-hasimt --- BEGIN
-void ComponentCache::cleanAllDescendantsOf(CacheEntryID id) {
+template <class T_data>
+void ComponentCache<T_data>::cleanAllDescendantsOf(CacheEntryID id) {
 	CacheEntryID next_child = entry(id).first_descendant();
 	while (next_child) {
 		CacheEntryID act_child = next_child;

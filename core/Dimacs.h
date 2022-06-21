@@ -63,6 +63,22 @@ static void readProjVars(B& in, Solver&S) {
 		S.registerAsPVar(parsed_var-1, true);
 	}
 }
+template<class B, class Solver>
+static void readWeight(B& in, Solver &S) {
+	int parsed_lit, var;
+	double weight;
+
+	parsed_lit = parseInt(in);
+	var = abs(parsed_lit)-1;
+	weight = parseDoubleWeight(in);
+	Lit lit = (parsed_lit > 0) ? mkLit(var) : ~mkLit(var);
+	S.setWeight(lit, weight);
+	// S.setWeight(~lit, (double)1-weight);
+
+	parsed_lit = parseInt(in);
+	if(parsed_lit != 0)
+		printf("c o PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
+}
 // --- Added by k-hasimt --- END
 
 template<class B, class Solver>
@@ -84,6 +100,7 @@ static void parse_DIMACS_main(B& in, Solver& S) {
 			if (eagerMatch(in, "p cnf")){
 				vars    = parseInt(in);
 				clauses = parseInt(in);
+				if(S.wc) S.initWeights(2*vars);
 				// pvars   = parseInt(in);
 				// SATRACE'06 hack
 				// if (clauses > 4000000)
@@ -99,15 +116,25 @@ static void parse_DIMACS_main(B& in, Solver& S) {
 			}
 			// } else if (*in == 'c' || *in == 'p')
 		} else if (*in == 'c') {
-			B in_b = in, in_c = in;
-			if (eagerMatch(in_b, "c p show")) {
-				in = in_b;
-				readProjVars(in, S);
-				format = MC2021;
-			} else if (eagerMatch(in_c, "cr")) {  // added by k-hasimt
+			if (eagerMatch(in, "c p")) {
+				skipWhitespace(in);
+				if (*in == 's') {
+					if (eagerMatch(in, "show")) {
+						readProjVars(in, S);
+						format = MC2021;
+					}
+				}
+				else if(*in == 'w') {
+					if (eagerMatch(in, "weight")) {
+						readWeight(in, S);
+					}
+				}
+/*
+			} else if (eagerMatch(in_c, "cr")) {
 				in = in_c;
 				readProjVars(in, S);
 				format = CNFCR;
+*/
 			} else
 				skipLine(in);
 		} else if (*in == 'v'){

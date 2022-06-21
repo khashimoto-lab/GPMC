@@ -1,5 +1,6 @@
 #include <iostream>
 #include <gmpxx.h>
+#include "mpfr/mpreal.h"
 #include "core/Component.h"
 #include "utils/Options.h"
 
@@ -14,10 +15,14 @@ using namespace std;
 
 IntOption  opt_cachesize ("GPMC -- CACHE", "cs", "Maximum component cache size (MB) (not strict)", 4000, IntRange(1, INT32_MAX));
 
-unsigned PackedComponent::_bits_per_clause = 0;
-unsigned PackedComponent::_bits_per_variable = 0;
-unsigned PackedComponent::_variable_mask = 0;
-unsigned PackedComponent::_clause_mask = 0;
+template <typename T_data>
+unsigned PackedComponent<T_data>::_bits_per_clause = 0;
+template <typename T_data>
+unsigned PackedComponent<T_data>::_bits_per_variable = 0;
+template <typename T_data>
+unsigned PackedComponent<T_data>::_variable_mask = 0;
+template <typename T_data>
+unsigned PackedComponent<T_data>::_clause_mask = 0;
 
 int availableRAMSize(){
 #ifdef USE_SYSINFO
@@ -49,11 +54,12 @@ int availableRAMSize(){
 #endif
 }
 
-void ComponentCache::init() {
+template <class T_data>
+void ComponentCache<T_data>::init() {
 	table_.clear();
 	entry_base_.clear();
 	entry_base_.reserve(2000000);
-	entry_base_.push_back(new CachedComponent()); // dummy Element
+	entry_base_.push_back(new CachedComponent<T_data>()); // dummy Element
 	table_.resize(900001, NULL);
 	free_entry_base_slots_.clear();
 	free_entry_base_slots_.reserve(10000);
@@ -63,7 +69,8 @@ void ComponentCache::init() {
 	recompute_bytes_memory_usage();
 }
 
-CacheEntryID ComponentCache::createEntryFor(Component &comp, unsigned stack_id) {
+template <class T_data>
+CacheEntryID ComponentCache<T_data>::createEntryFor(Component &comp, unsigned stack_id) {
 	my_time_++;
 	CacheEntryID id;
 
@@ -77,14 +84,14 @@ CacheEntryID ComponentCache::createEntryFor(Component &comp, unsigned stack_id) 
 		if (entry_base_.capacity() == entry_base_.size()) {
 			entry_base_.reserve(2 * entry_base_.size());
 		}
-		entry_base_.push_back(new CachedComponent(comp));
+		entry_base_.push_back(new CachedComponent<T_data>(comp));
 		id = entry_base_.size() - 1;
 	} else {
 		id = free_entry_base_slots_.back();
 		assert(id < entry_base_.size());
 		assert(entry_base_[id] == nullptr);
 		free_entry_base_slots_.pop_back();
-		entry_base_[id] = new CachedComponent(comp);
+		entry_base_[id] = new CachedComponent<T_data>(comp);
 	}
 	entry_base_[id]->setComponentStackID(stack_id);
 	entry_base_[id]->set_creation_time(my_time_);
@@ -127,8 +134,9 @@ void ComponentCache::test_descendantstree_consistency() {
 }
 #endif
 
-uint64_t ComponentCache::recompute_bytes_memory_usage() {
-	cache_bytes_memory_usage_ = sizeof(ComponentCache) + sizeof(CacheBucket *) * table_.capacity();
+template <class T_data>
+uint64_t ComponentCache<T_data>::recompute_bytes_memory_usage() {
+	cache_bytes_memory_usage_ = sizeof(ComponentCache) + sizeof(CacheBucket<T_data> *) * table_.capacity();
 	for (auto pbucket : table_)
 		if (pbucket != nullptr)
 			cache_bytes_memory_usage_ += pbucket->getBytesMemoryUsage();
@@ -139,14 +147,15 @@ uint64_t ComponentCache::recompute_bytes_memory_usage() {
 	return cache_bytes_memory_usage_;
 }
 
-bool ComponentCache::requestValueOf(Component &comp, mpz_class &rn) {
-	CachedComponent &packedcomp = entry(comp.id());
+template <class T_data>
+bool ComponentCache<T_data>::requestValueOf(Component &comp, T_data &rn) {
+	CachedComponent<T_data> &packedcomp = entry(comp.id());
 
 	unsigned int v = clip(packedcomp.hashkey());
 	if (!isBucketAt(v))
 		return false;
 
-	CachedComponent *pcomp;
+	CachedComponent<T_data> *pcomp;
 	num_cache_look_ups_++;
 
 	for (auto it = table_[v]->begin(); it != table_[v]->end(); it++) {
@@ -164,7 +173,8 @@ bool ComponentCache::requestValueOf(Component &comp, mpz_class &rn) {
 	return false;
 }
 
-bool ComponentCache::deleteEntries() {
+template <class T_data>
+bool ComponentCache<T_data>::deleteEntries() {
 	assert(cache_bytes_memory_usage_ >= maximum_cache_size_bytes);
 
 	vector<double> scores;
@@ -218,7 +228,8 @@ bool ComponentCache::deleteEntries() {
 	return true;
 }
 
-void ComponentCache::deleteallentries(){
+template <class T_data>
+void ComponentCache<T_data>::deleteallentries(){
 	for (unsigned id = 2; id < entry_base_.size(); id++)
 		if (entry_base_[id] != nullptr) {
 			removeFromDescendantsTree(id);
@@ -240,7 +251,8 @@ void ComponentCache::deleteallentries(){
 	cache_bytes_memory_usage_ = recompute_bytes_memory_usage();
 }
 
-void PackedComponent::adjustPackSize(unsigned int maxVarId, unsigned int maxClId) {
+template <class T_data>
+void PackedComponent<T_data>::adjustPackSize(unsigned int maxVarId, unsigned int maxClId) {
 	_bits_per_variable = (unsigned int) ceil(log((double) maxVarId + 1) / log(2.0));
 	_bits_per_clause = (unsigned int) ceil(log((double) maxClId + 1) / log(2.0));
 
@@ -250,3 +262,8 @@ void PackedComponent::adjustPackSize(unsigned int maxVarId, unsigned int maxClId
 	for (unsigned int i = 0; i < _bits_per_clause; i++)
 		_clause_mask = (_clause_mask << 1) + 1;
 }
+
+template class GPMC::PackedComponent<mpz_class>;
+template class GPMC::ComponentCache<mpz_class>;
+template class GPMC::PackedComponent<mpfr::mpreal>;
+template class GPMC::ComponentCache<mpfr::mpreal>;

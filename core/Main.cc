@@ -1,6 +1,6 @@
 /*****************************************************************************************[Main.cc]
  *
- * GPMC -- Copyright (c) 2017-2021, Kenji Hashimoto (Nagoya University, Japan)
+ * GPMC -- Copyright (c) 2017-2022, Kenji Hashimoto (Nagoya University, Japan)
  *
 
 GPMC sources are based on Glucose 3.0 and SharpSAT 12.08.1.
@@ -72,6 +72,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "utils/ParseUtils.h"
 #include "utils/Options.h"
 #include "core/Dimacs.h"
+#include "preprocessor/Preprocessor.h"
 // #include "core/Solver.h"
 #include "core/Counter.h"
 
@@ -79,31 +80,49 @@ using namespace Glucose;
 using namespace GPMC;
 
 //=================================================================================================
+static Solver *counter;
 
-static Counter* solver;
 // Terminate by notifying the solver and back out gracefully. This is mainly to have a test-case
 // for this feature of the Solver as it may take longer than an immediate call to '_exit()'.
 static void SIGINT_interrupt(int signum) {
-	printf("c o\n"); printf("c o *** INTERRUPTED by signal %d ***\n", signum);fflush(stdout);
-	solver->interrupt();
-
-	if(solver->stopping || !solver->postprocessing) {
-		// solver->printStats();
-		_exit(1);
-	} else {
-		solver->stopping = true;
-	}
+	printf("c o\n");
+	printf("c o *** INTERRUPTED by signal %d ***\n", signum);
+	printf("c o Elapsed time %.2lf s\n", cpuTime());
+	fflush(stdout);
+	counter->interrupt();
 }
 
 // Note that '_exit()' rather than 'exit()' has to be used. The reason is that 'exit()' calls
 // destructors and may cause deadlocks if a malloc/free function happens to be running (these
 // functions are guarded by locks for multithreaded use).
 static void SIGINT_exit(int signum) {
-	printf("c o\n"); printf("c o *** INTERRUPTED by signal %d ***\n", signum);fflush(stdout);
-	solver->interrupt();
-	// solver->printStats();
+	printf("c o\n");
+	printf("c o *** INTERRUPTED by signal %d ***\n", signum);
+	printf("c o Elapsed time %.2lf s\n", cpuTime());
+	fflush(stdout);
 	_exit(1); }
 
+static void SetSigAct(Solver *s) {
+	counter = s;
+	signal(SIGINT,  SIGINT_interrupt);  //  2, SIGINT
+	signal(SIGABRT, SIGINT_exit);       //  6, SIGABRT
+	signal(SIGSEGV, SIGINT_exit);       // 11, SIGSEGV
+	signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
+	signal(SIGXCPU, SIGINT_interrupt);
+}
+//=================================================================================================
+static PPMC::Instance::Mode getMode(int opt_mode)
+{
+	PPMC::Instance::Mode mode;
+	switch(opt_mode) {
+		case 0:	mode = PPMC::Instance::MC; 	break;
+		case 1:	mode = PPMC::Instance::WMC;	break;
+		case 2:	mode = PPMC::Instance::PMC; break;
+		case 3:	mode = PPMC::Instance::WPMC; break;
+		default:	mode = PPMC::Instance::MC; 	break;
+	}
+	return mode;
+}
 //=================================================================================================
 // Main:
 
@@ -112,6 +131,8 @@ int main(int argc, char** argv)
 {
 
 	try {
+		double start = realTime();
+
 		setUsageHelp("c USAGE: %s [options] <input-file>\n");
 		// setUsageHelp("c USAGE: %s [options] <input-file> <result-output-file>\n\n  where input may be either in plain or gzipped DIMACS.\n");
 		// printf("This is MiniSat 2.0 beta\n");
@@ -126,41 +147,44 @@ int main(int argc, char** argv)
 		IntOption    verb("MAIN", "verb",   "Verbosity level (0=silent, 1=some).", 1, IntRange(0, 1));
 		IntOption    cpu_lim("MAIN", "cpu-lim","Limit on CPU time allowed in seconds.\n", INT32_MAX, IntRange(0, INT32_MAX));
 		IntOption    mem_lim("MAIN", "mem-lim","Limit on memory usage in megabytes.\n", INT32_MAX, IntRange(0, INT32_MAX));
-		StringOption opt_threshold ("GPMC -- MAIN", "upto", "Stop when it finds #models >= threshold. An input threshold should be a natural number.");
+
+		IntOption opt_mode("GPMC -- MAIN", "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 3=wpmc).", 0, IntRange(0, 3));
+
+		IntOption opt_varlimit("GPMC -- PP", "varlim", "limit on #Vars in Preprocessing.", 150000, IntRange(0, INT32_MAX));
+		DoubleOption opt_pptimelimit("GPMC -- PP", "pptimelim", "Time shreshold for deciding if it performs the last step of preprocessing.", 120, DoubleRange(0, true, 3600, true));
+		IntOption opt_ppverb("GPMC -- PP", "ppverb", "Preprocessing verbosity level (0=some, 1=more).", 0, IntRange(0, 1));
+
+		BoolOption opt_td("GPMC -- MAIN", "td", "Tree Decomposition", true);
+		IntOption  opt_td_varlim("GPMC -- MAIN", "tdvarlim", "Limit on #Vars in Tree Decomposition", 150000, IntRange(0, INT32_MAX));
+		DoubleOption  opt_td_dlim("GPMC -- MAIN", "tddenlim", "Limit on density of graph in Tree Decomposition", 0.10, DoubleRange(0, true, 1, true));
+		DoubleOption  opt_td_rlim("GPMC -- MAIN", "tdratiolim", "Limit on ratio (edges/vars) of graph in Tree Decomposition", 30.0, DoubleRange(0, true, 1000, true));
+		DoubleOption  opt_td_twvar("GPMC -- MAIN", "twvarlim", "Limit on tw/vars", 0.25, DoubleRange(0, true, 1, true));
+		DoubleOption opt_td_to("GPMC -- MAIN", "tdtime", "Time Limit on Tree Decomposition", 0, DoubleRange(0, true, 120, true));
+		DoubleOption opt_coef("GPMC -- MAIN", "coef", "TDscore coefficient", 100, DoubleRange(0, true, 10000000, true));
+		StringOption opt_tdout("GPMC -- MAIN", "tdout", "Outfile for Tree Decomposition", "NULL");
 
 		parseOptions(argc, argv, true);
 
-		Counter S;
-		double initial_time = cpuTime();
 
-		S.verbosity_c = verb;
-		S.verbosity = 0;
+		PPMC::Preprocessor PP(false, opt_varlimit, opt_pptimelimit, opt_ppverb);
+		PPMC::Instance::Mode mode = getMode(opt_mode);
 
-		if(S.verbosity_c) {
+		if(verb) {
 			printf("c o "GPMC_VERSION"\n");
-			printf("c o Command: ");
-			for (int i=0; i < argc; i++)
-				printf("%s ", argv[i]);
-			printf("\n");
+			switch(mode) {
+			  case PPMC::Instance::MC:		printf("c o Mode: Model Counting\n"); break;
+			  case PPMC::Instance::WMC:		printf("c o Mode: Weighted Model Counting\n"); break;
+			  case PPMC::Instance::PMC:		printf("c o Mode: Projected Model Counting\n"); break;
+			  case PPMC::Instance::WPMC:	printf("c o Mode: Weighted Projected Model Counting\n"); break;
+			}
 			fflush(stdout);
 		}
 
-		S.hasThreshold = (opt_threshold != NULL);
-		if(S.hasThreshold) {
-			S.norma = S.norma_orig = opt_threshold;
-			if(S.norma <= 0){
-				fprintf(stderr, "c o Invalid argument: -upto=<num>: num should be a positive natural number > 0.\n");
-				exit(1);
-			}
-		}
-		else
-			S.norma = S.norma_orig = 0;
-
-		solver = &S;
 		// Use signal handlers that forcibly quit until the solver will be able to respond to
 		// interrupts:
 		signal(SIGINT, SIGINT_exit);
-		signal(SIGXCPU,SIGINT_exit);
+		signal(SIGTERM, SIGINT_exit);  // 15, SIGTERM
+		//  signal(SIGXCPU,SIGINT_exit);
 
 		// Set limit on CPU-time:
 		if (cpu_lim != INT32_MAX){
@@ -183,29 +207,73 @@ int main(int argc, char** argv)
 					printf("c o WARNING! Could not set resource limit: Virtual memory.\n");
 			} }
 
-		if (argc == 1)
+		// Loading input
+		if (argc == 1) {
 			printf("c o Reading from standard input... Use '--help' for help.\n");
+			PP.loadFromStdin(mode);
+		}
+		else {
+			printf("c o Reading from the file %s...\n", argv[1]);
+			PP.loadFromFile(argv[1], mode);
+		}
+		printf("c o Reading finished.\n");
+		printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+		fflush(stdout);
 
-		gzFile in = (argc == 1) ? gzdopen(0, "rb") : gzopen(argv[1], "rb");
-		if (in == NULL)
-			fprintf(stderr, "c o ERROR! Could not open file: %s\n", argc == 1 ? "<stdin>" : argv[1]), exit(1);
+		// Simplifying
+		printf("c o Simplification starts...\n");
+		PP.Simplify();		// Simplify includes SAT solving.
+		printf("c o Simplification finished.\n");
+		printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+		fflush(stdout);
 
-		parse_DIMACS(in, S);
-		gzclose(in);
+		std::vector<int> dists;
+		if(opt_td && !PP.ins.unsat && PP.ins.npvars > 0 && PP.ins.vars > 20) {
+			printf("c o Tree Decomposition starts... \n");
+			TreeDecomposition td = PP.getTD(opt_td_varlim, opt_td_dlim, opt_td_rlim, opt_td_to);
+			if(td.numNodes() > 0) {
+				int centroid = td.centroid(PP.ins.npvars);
+				if(strcmp(opt_tdout, "NULL") != 0) {
+					ofstream out(opt_tdout);
+					td.toDimacs(out, centroid+1, PP.ins.npvars);
+				}
+				if((double)td.width()/PP.ins.npvars < opt_td_twvar)
+					dists = td.distanceFromCentroid(PP.ins.npvars);
+				else
+					printf("c o ignore td\n");
+			}
+			printf("c o Tree Decomposition finished.\n");
+			printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+		}
+		fflush(stdout);
 
-		double parsed_time = cpuTime();
-		if (S.verbosity_c) S.printProblemStats(parsed_time - initial_time, "parsing");
+		// Counting
+		printf("c o GPMC Counting starts... \n");
+		if(mode == PPMC::Instance::MC || mode == PPMC::Instance::PMC) {
+			// non-weighted
+			Counter<mpz_class> S;
+			SetSigAct((Solver *)&S);
+			S.import(PP.ins);
+			S.computeTDScore(dists, opt_coef);
+			S.countModels();
+			S.printStats();
+		} else {
+			// weighted
+			Counter<mpfr::mpreal> S;
+			SetSigAct((Solver *)&S);
+			S.import(PP.ins);
+			S.computeTDScore(dists);
+			S.countModels();
+			S.printStats();
+		}
+		printf("c o GPMC Counting finished.\nc o\n");
+		printf("c o CPU time    = %.2lf s\n", cpuTime());
+		printf("c o Real time   = %.2lf s\n", realTime()-start);
+		double mem_used = memUsedPeak();
+		if (mem_used != 0)
+			printf("c o Memory used = %.2f MB\n", mem_used);
 
-		// Change to signal-handlers that will only notify the solver and allow it to terminate
-		// voluntarily:
-		signal(SIGINT,  SIGINT_interrupt);  //  2, SIGINT
-		signal(SIGABRT, SIGINT_exit);       //  6, SIGABRT
-		signal(SIGSEGV, SIGINT_exit);       // 11, SIGSEGV
-		signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
-		signal(SIGXCPU, SIGINT_interrupt);
-
-		S.countModels();
-		S.printStats();
+		fflush(stdout);
 		exit(0);
 
 	} catch (const std::invalid_argument&) {
@@ -213,8 +281,6 @@ int main(int argc, char** argv)
 		exit(1);
 	} catch (OutOfMemoryException&){
 		printf("c o INDETERMINATE (out of memory)\n");
-		solver->interrupt();
-		solver->printStats();
 		exit(1);
 	}
 }

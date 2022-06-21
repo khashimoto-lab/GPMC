@@ -107,6 +107,34 @@ static double parseDouble(B& in) { // only in the form X.XXXXXe-XX
 	return neg ? -accu:accu;
 }
 
+template<class B>
+static double parseDoubleWeight(B& in) { // 0.xxxx or 1.xxxxx
+	double accu = 0.0;
+	double currentExponent = 1;
+	int exponent;
+	int length = 0;
+
+	skipWhitespace(in);
+
+	if (!(*in == '0' || *in == '1')) printf("PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
+	accu = (double)(*in - '0');
+	++in, ++length;
+	if (*in != '.') {
+		if(*in >= '0' && *in <= '9') printf("PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
+		return accu;
+	}
+	++in; // skip dot
+	currentExponent = 0.1;
+	while (length <= 9 && *in >= '0' && *in <= '9')
+		accu = accu + currentExponent * ((double)(*in - '0')),
+		currentExponent /= 10,
+		++in, ++length;
+	// if (length > 9 && *in >= '0' && *in <= '9') printf("PARSE ERROR! Unexpected char: %c\n", *in),exit(3);
+	while(*in >= '0' && *in <= '9') ++in;
+	++in; // skip dot
+
+	return accu;
+}
 
 template<class B>
 static int parseInt(B& in) {

@@ -4,6 +4,7 @@
 - g++ 4.7 or later
 - cmake and make
 - GMP bignum package
+- MPFR
 - zlib
 
 ## Installation

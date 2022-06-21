@@ -3,31 +3,43 @@
 
 #include "core/Solver.h"
 #include "core/Component.h"
+#include "preprocessor/Instance.h"
 
 using namespace Glucose;
 
 namespace GPMC {
 
-#define GPMC_VERSION "gpmc-1.0.1"
+#define GPMC_VERSION "gpmc-1.1"
 
+enum btStateT {
+	EXIT, RESOLVED, GO_TO_NEXT_COMP
+};
+
+template <class T_data>
 class Counter: public Solver {
 public:
 	// Constructor/Destructor
 	//
-	Counter();
+	Counter(bool weighted=false);
 	~Counter();
 
 	// Methods
 	//
-	bool presimplify();			// Simplification before model counting
+//	bool presimplify();			// Simplification before model counting
 	bool simplify();
 	bool countModels();		    // Main count method
 
-	void registerAsPVar(Var v, bool b);	// Register a projection variable (if b is true)
-	void registerAllVarsAsPVar(int nvars);
-	void registerPVars(vec<Var>& vars);
+//	void registerAsPVar(Var v, bool b);	// Register a projection variable (if b is true)
+//	void registerAllVarsAsPVar(int nvars);
+//	void registerPVars(vec<Var>& vars);
 	int nPVars() const;			// The number of non-isolated projection variables
 	int nIsoPVars() const;			// The number of isolated projection variables
+
+	void import(const PPMC::Instance &ins);
+	void computeTDScore(const vector<int>& dists, double coef=100.0);
+
+	void initWeights(int nlits);
+	void setWeight(Lit l, double weight);
 
 	void printProblemStats(double parsed_time, const char* msg) const;
 	void printStats() const;
@@ -35,20 +47,17 @@ public:
 
 	// Data members
 	//
-	mpz_class npmodels;				// The number of models
-	mpz_class norma;
-	mpz_class norma_orig;
+	bool sat;
+	T_data npmodels;
 
 	// options
 	bool on_bj;
 	double bjthd;
 	bool on_simp;
-	bool hasThreshold;
-	bool postprocessing;
-	bool stopping;
 
 	int verbosity_c;
 	bool mc;
+	bool wc;
 
 	/// statistics
 	uint64_t conflicts_pre, decisions_pre, propagations_pre;
@@ -59,13 +68,9 @@ public:
 	double simplify_time;
 
 protected:
-	enum btStateT {
-		EXIT, RESOLVED, GO_TO_NEXT_COMP
-	};
-
 	// Methods
 	//
-
+#if 0
 	/// Preprocessing
 	bool FailedLiterals();
 	void Compact();
@@ -73,6 +78,9 @@ protected:
 	void RewriteClauses(const vec<CRef>& cs, const vec<Var>& map);
 	void removeClauseNoDetach(CRef cr);
 	void reinit(const int varnum);
+#endif
+	/// Load weight
+	void loadWeight(const PPMC::Instance& ins);
 
 	/// Count main method
 	void count_main();
@@ -100,7 +108,7 @@ protected:
 	int npvars;				// boundary number between projection vars and non-projection vars
 	int npvars_isolated;	// Number of isolated projection vars
 
-	ComponentManager cmpmgr;	// The manger for processing components
+	ComponentManager<T_data> cmpmgr;	// The manger for processing components
 	vec<vec<int>> occ_lists;
 
 	int limlevel;
@@ -111,22 +119,30 @@ protected:
 	CRef last_cr;
 	Lit  last_lit;
 
+	vec<T_data> lit_weight;
+	T_data gweight;
+
+	vec<double> tdscore;
 };
 
 // Inline methods
-inline void Counter::registerAsPVar(Var v, bool b) {
+#if 0
+template <typename T_data>
+inline void Counter<T_data>::registerAsPVar(Var v, bool b) {
 	if (v >= ispvar.size())
 		ispvar.growTo(v + 1, 0);
 	ispvar[v] = b;
 	npvars += b;
 }
-inline void Counter::registerAllVarsAsPVar(int nvars) {
+template <typename T_data>
+inline void Counter<T_data>::registerAllVarsAsPVar(int nvars) {
 	ispvar.clear();
 	ispvar.growTo(nvars+1, true);
 	ispvar[nvars] = 0;
 	npvars = nvars;
 }
-inline void Counter::registerPVars(vec<Var>& vars) {
+template <typename T_data>
+inline void Counter<T_data>::registerPVars(vec<Var>& vars) {
 	ispvar.clear();
 	ispvar.growTo(nVars()+1, false);
 	for(int i=0; i<vars.size(); i++) {
@@ -134,20 +150,40 @@ inline void Counter::registerPVars(vec<Var>& vars) {
 		registerAsPVar(vars[i], true);
 	}
 }
-inline int Counter::nPVars() const {
+#endif
+template <typename T_data>
+inline int Counter<T_data>::nPVars() const {
 	return npvars;
 }
-inline int Counter::nIsoPVars() const {
+template <typename T_data>
+inline int Counter<T_data>::nIsoPVars() const {
 	return npvars_isolated;
 }
-
-inline void Counter::printProblemStats(double time, const char *msg) const {
+#if 0
+template <typename T_data>
+inline void Counter<T_data>::initWeights(int nlits) {
+	lit_weight.clear();
+	lit_weight.growTo(nlits, 1);
+}
+template <typename T_data>
+inline void Counter<T_data>::setWeight(Lit l, double weight) {
+	lit_weight[toInt(l)] = weight;
+}
+#endif
+template <typename T_data>
+inline void Counter<T_data>::printProblemStats(double time, const char *msg) const {
 	printf("c o Problem: %d vars (%d pvars), %d clauses, %"PRIu64" literals, %s %.2f s\n", nVars(), nPVars(), nClauses(), clauses_literals, msg, time);
 	fflush(stdout);
 }
-inline void Counter::printStatsOfCM() const {
+template <typename T_data>
+inline void Counter<T_data>::printStatsOfCM() const {
 	cmpmgr.printStats();
 }
+
+template <>
+void Counter<mpz_class>::loadWeight(const PPMC::Instance &ins);
+template <>
+void Counter<mpfr::mpreal>::loadWeight(const PPMC::Instance &ins);
 
 }
 

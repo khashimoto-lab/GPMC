@@ -1,4 +1,5 @@
 #include <gmpxx.h>
+#include "mpfr/mpreal.h"
 #include "core/Counter.h"
 #include "mtl/Sort.h"
 #include "utils/System.h"
@@ -15,7 +16,7 @@ using namespace GPMC;
 
 static const char* _mc = "GPMC -- COUNTER";
 static BoolOption opt_mc       (_mc, "mc", "Model counting (all vars are projection vars)", false);
-static BoolOption opt_postproc (_mc, "pp", "Postprocessing", false);
+// static BoolOption opt_postproc (_mc, "pp", "Postprocessing", false);
 
 static BoolOption opt_bj       (_mc, "bj", "Backjumping", true);
 static DoubleOption opt_bj_thd (_mc, "bjthd", "Backjumping threshold", 0.5, DoubleRange(0, false, 1, false));
@@ -23,21 +24,20 @@ static DoubleOption opt_bj_thd (_mc, "bjthd", "Backjumping threshold", 0.5, Doub
 static BoolOption opt_simp     (_mc, "rmvsatcl", "Remove satisfied clauses", true);
 static IntOption  opt_simp_thd (_mc, "rmvsatclthd", "Thereshold of removing satisfied clauses", 2, IntRange(0,INT32_MAX));
 
+static IntOption opt_precision (_mc, "prec", "Precision of output of weighted model counting", 15, IntRange(0,INT32_MAX));
+
 //=================================================================================================
 // Constructor/Destructor:
 
-Counter::Counter() :
+template <typename T_data>
+Counter<T_data>::Counter(bool weighted) :
   npmodels           (0)
-, norma              (0)
-, norma_orig         (0)
 , on_bj              (opt_bj)
 , bjthd              (opt_bj_thd)
 , on_simp            (opt_simp)
-, hasThreshold       (false)
-, postprocessing     (opt_postproc)
-, stopping           (false)
-, verbosity_c        (0)
+, verbosity_c        (1)
 , mc                 (opt_mc)
+, wc					(weighted)
 , conflicts_pre      (0)
 , decisions_pre      (0)
 , propagations_pre   (0)
@@ -58,19 +58,23 @@ Counter::Counter() :
 , last_bklevel       (0)
 , last_cr            (CRef_Undef)
 , last_lit           (lit_Undef)
+, gweight				(1)
 {
 	verbosity = 0;
 	showModel = false;
 }
 
-Counter::~Counter()
+template <typename T_data>
+Counter<T_data>::~Counter()
 {
 }
 
+#if 0
 //=================================================================================================
 // Methods for simplifying
 
-bool Counter::presimplify()
+template <typename T_data>
+bool Counter<T_data>::presimplify()
 {
 	assert(decisionLevel() == 0);
 
@@ -91,7 +95,8 @@ bool Counter::presimplify()
 	return true;
 }
 
-bool Counter::FailedLiterals() {
+template <typename T_data>
+bool Counter<T_data>::FailedLiterals() {
 	int last_size;
 	do {
 		last_size = trail.size();
@@ -139,7 +144,8 @@ bool Counter::FailedLiterals() {
 	return true;
 }
 
-void Counter::Compact() {
+template <typename T_data>
+void Counter<T_data>::Compact() {
 	assert(decisionLevel() == 0);
 
 	int varnum = 0;
@@ -159,10 +165,17 @@ void Counter::Compact() {
 
 	vec<double> activity2;
 	vec<char> polarity2;
+	vec<T_data> lit_weight2;
 	activity.copyTo(activity2);
 	activity.shrink(nVars()-varnum);
 	polarity.copyTo(polarity2);
 	polarity.shrink(nVars()-varnum);
+
+	if(wc) {
+		lit_weight.copyTo(lit_weight2);
+		lit_weight.shrink(nVars()*2-varnum*2);
+	}
+
 
 	for(Var v=0; v < nVars(); v++) {
 		if(occurred[v]) {
@@ -170,11 +183,23 @@ void Counter::Compact() {
 				map[v] = new_idx;
 				activity[new_idx] = activity2[v];
 				polarity[new_idx] = polarity2[v];
+				if(wc) {
+					lit_weight[toInt(mkLit(new_idx))] = lit_weight2[toInt(mkLit(v))];
+					lit_weight[toInt(~mkLit(new_idx))] = lit_weight2[toInt(~mkLit(v))];
+				}
 				new_idx++;
 			}
 			else nonpvars.push_(v);
 		} else {
-			if(value(v) == l_Undef && ispvar[v]) npvars_isolated++;
+			// if(value(v) == l_Undef && ispvar[v]) npvars_isolated++;
+			if(ispvar[v]) {
+				if(value(v) == l_Undef) {
+					npvars_isolated++;
+					if(wc) gweight *= lit_weight2[toInt(mkLit(v, true))] + lit_weight2[toInt(mkLit(v, false))];
+				} else {
+					if(wc) gweight *= lit_weight2[toInt(mkLit(v, value(v)==l_False))];
+				}
+			}
 		}
 	}
 	npvars = new_idx;
@@ -196,7 +221,8 @@ void Counter::Compact() {
 	checkGarbage(0.05);
 }
 
-void Counter::RewriteClauses(const vec<CRef>& cs, const vec<Var>& map)
+template <typename T_data>
+void Counter<T_data>::RewriteClauses(const vec<CRef>& cs, const vec<Var>& map)
 {
 	for(int i=0; i < cs.size(); i++) {
 		Clause& c = ca[cs[i]];
@@ -210,7 +236,8 @@ void Counter::RewriteClauses(const vec<CRef>& cs, const vec<Var>& map)
 	}
 }
 
-void Counter::CompactClauses(vec<CRef>& cs, vec<bool>& occurred, int& varnum)
+template <typename T_data>
+void Counter<T_data>::CompactClauses(vec<CRef>& cs, vec<bool>& occurred, int& varnum)
 {
 	int i1, i2;
 	int j1, j2;
@@ -243,7 +270,8 @@ void Counter::CompactClauses(vec<CRef>& cs, vec<bool>& occurred, int& varnum)
 	cs.shrink(i1-i2);
 }
 
-void Counter::removeClauseNoDetach(CRef cr) {
+template <typename T_data>
+void Counter<T_data>::removeClauseNoDetach(CRef cr) {
 	Clause& c = ca[cr];
 
 	// Don't leave pointers to free'd memory!
@@ -252,7 +280,8 @@ void Counter::removeClauseNoDetach(CRef cr) {
 	ca.free(cr);
 }
 
-void Counter::reinit(int varnum)
+template <typename T_data>
+void Counter<T_data>::reinit(int varnum)
 {
 	qhead = 0;
 	trail.clear();
@@ -286,8 +315,10 @@ void Counter::reinit(int varnum)
 	for(int i=0; i<clauses.size(); i++) attachClause(clauses[i]);
 	for(int i=0; i<learnts.size(); i++) attachClause(learnts[i]);
 }
+#endif
 
-bool Counter::simplify()
+template <typename T_data>
+bool Counter<T_data>::simplify()
 {
 	if (!ok || propagate() != CRef_Undef)
 		return ok = false;
@@ -317,28 +348,28 @@ bool Counter::simplify()
 
 //=================================================================================================
 // Major methods:
-bool Counter::countModels()
+template <typename T_data>
+bool Counter<T_data>::countModels()
 {
 	double start_time = cpuTime();
-	bool simp = presimplify();
-	if (verbosity_c) {
-		double simp_time = cpuTime();
-		if (verbosity_c) { printProblemStats(simp_time - start_time, "simplifying"); }
-	}
+// 	bool simp = presimplify();
+//	if (verbosity_c) {
+//		double simp_time = cpuTime();
+//		if (verbosity_c) { printProblemStats(simp_time - start_time, "simplifying"); }
+//	}
 
-	if (!simp) {
-		if (verbosity_c) { printf("c o solved by preprocessing.\n"); }
+	if (!sat) {
 		npmodels = 0;
 		return false;
 	} else if (nVars() == 0) {
-		if (verbosity_c) { printf("c o solved by preprocessing.\n"); }
-		npmodels = 1;
-		mpz_mul_2exp(npmodels.get_mpz_t (), npmodels.get_mpz_t (), nIsoPVars());
+		sat = true;
+		if(wc)
+			npmodels = gweight;
+		else
+			npmodels = ((T_data)1) << nIsoPVars();
+
 		return true;
 	}
-
-	if(nIsoPVars() > 0 && hasThreshold)
-		mpz_cdiv_q_2exp(norma.get_mpz_t (), norma.get_mpz_t (), nIsoPVars());
 
 	solves = starts = 0;
 	count_main();
@@ -347,7 +378,8 @@ bool Counter::countModels()
 	return true;
 }
 
-void Counter::count_main()
+template <typename T_data>
+void Counter<T_data>::count_main()
 {
 	int          backtrack_level;
 	vec<Lit>     learnt_clause,selectors;
@@ -355,11 +387,12 @@ void Counter::count_main()
 
 	btStateT bstate = RESOLVED;
 	limlevel = 0;
-	cmpmgr.init(nVars(),nPVars(),clauses,ca,hasThreshold,norma);
+	cmpmgr.init(wc, nVars(),nPVars(),clauses,ca);
 
 	for(;;) {
 		assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
 
+		int bpos = trail.size();
 		for(int i = 0; i < unitcls.size(); i++){
 			enqueue(unitcls[i]);
 			vardata[var(unitcls[i])].level = 0;
@@ -368,6 +401,13 @@ void Counter::count_main()
 		if(decisionLevel() == 0) unitcls.clear();
 
 		CRef confl = propagate();
+		if(wc) {
+			for(int i = bpos; i < trail.size(); i++){
+				if(var(trail[i]) < npvars && cmpmgr.isDecCand(var(trail[i]))) {
+					cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(trail[i])]);
+				}
+			}
+		}
 
 		if(confl != CRef_Undef){
 			// CONFLICT
@@ -386,8 +426,7 @@ void Counter::count_main()
 				cancelUntil(backtrack_level);
 				cmpmgr.backjumpTo(backtrack_level);
 				cmpmgr.removeCachePollutions();
-				cmpmgr.topDecision().increaseModels(0);	// reset
-				if(hasThreshold) cmpmgr.topDecision().resetNorma();
+				cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
 				bstate = RESOLVED;
 				continue;
 			}
@@ -418,9 +457,11 @@ void Counter::count_main()
 				cancelUntil(level);
 				cmpmgr.backjumpTo(level);
 				cmpmgr.removeCachePollutions();
-				cmpmgr.topDecision().increaseModels(0);	// reset
-				if(hasThreshold) cmpmgr.topDecision().resetNorma();
-				if(cr != CRef_Undef) uncheckedEnqueue(learnt_clause[0], cr);
+				cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
+				if(cr != CRef_Undef) {
+					uncheckedEnqueue(learnt_clause[0], cr);
+					if(wc && var(learnt_clause[0]) < npvars && cmpmgr.isDecCand(var(learnt_clause[0]))) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(learnt_clause[0])]);
+				}
 				bstate = RESOLVED;
 
 				if(nbackjumps > nPVars()) {
@@ -428,7 +469,7 @@ void Counter::count_main()
 				}
 			}
 			else {
-				cmpmgr.topDecision().increaseModels(0);	// set 0 (no model found at the current branch)
+				cmpmgr.topDecision().increaseModels((T_data)0, false);	// set 0 (no model found at the current branch)
 				bstate = backtrack(backtrack_level, learnt_clause[0], cr);
 			}
 
@@ -437,11 +478,11 @@ void Counter::count_main()
 			assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
 
 			// SPLIT THE CURRENT COMPONENT
-			int nsplitcomps = cmpmgr.splitComponent(assigns);
+			int nsplitcomps = cmpmgr.splitComponent(assigns, lit_weight);
 
 			if(nsplitcomps == 0) {
 				// NO NEW COMPONENT (#MODELS of the current component is found)
-				cmpmgr.topDecision().increaseModels(1);
+				cmpmgr.topDecision().increaseModels((T_data)1, true);
 				bstate = backtrack();
 			}
 			else {
@@ -450,12 +491,12 @@ void Counter::count_main()
 				// PROCESS COMPONENTS WITHOUT PROJECTION VARS FIRST
 				lbool sat_status = l_Undef;
 				while(cmpmgr.topDecision().hasUnprocessedSplitComp()
-						&& (!cmpmgr.topComponent().hasPVar() || (hasThreshold && cmpmgr.topDecision().getCurNorma()==1) || asynch_interrupt)) {
+						&& !cmpmgr.topComponent().hasPVar()) {
 					sat_status = solveSAT(); // SAT solving, i.e., try to find only one model
 
 					if(sat_status == l_True) {
 						sats++;
-						cmpmgr.topDecision().increaseModels(1);
+						cmpmgr.topDecision().increaseModels((T_data)1, true);
 						if(!cmpmgr.topComponent().hasPVar())
 							cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),1);
 						cmpmgr.eraseComponentStackID();
@@ -475,8 +516,7 @@ void Counter::count_main()
 						cancelUntil(last_bklevel);
 						cmpmgr.backjumpTo(last_bklevel);
 						cmpmgr.removeCachePollutions();
-						cmpmgr.topDecision().increaseModels(0);	// reset
-						if(hasThreshold) cmpmgr.topDecision().resetNorma();
+						cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
 						bstate = RESOLVED;
 						continue;
 					}
@@ -488,16 +528,21 @@ void Counter::count_main()
 						cancelUntil(level);
 						cmpmgr.backjumpTo(level);
 						cmpmgr.removeCachePollutions();
-						cmpmgr.topDecision().increaseModels(0);	// reset
-						if(hasThreshold) cmpmgr.topDecision().resetNorma();
-						if(last_cr != CRef_Undef) uncheckedEnqueue(last_lit, last_cr);
+						cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
+						if(last_cr != CRef_Undef) {
+							assert(value(last_lit) == l_Undef);
+							uncheckedEnqueue(last_lit, last_cr);
+							if(wc && var(last_lit) < npvars && cmpmgr.isDecCand(var(last_lit))) {
+								cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(last_lit)]);
+							}
+						}
 						bstate = RESOLVED;
 
 						if(nbackjumps > nPVars()) {
 							on_bj = false;
 						}
 					} else {
-						cmpmgr.topDecision().increaseModels(0);
+						cmpmgr.topDecision().increaseModels((T_data)0, false);
 						bstate = backtrack(last_bklevel, last_lit, last_cr);
 					}
 				} else if(!cmpmgr.topDecision().hasUnprocessedSplitComp()){
@@ -512,7 +557,7 @@ void Counter::count_main()
 		assert(cmpmgr.topComponent().hasPVar());
 
 		if (on_simp && decisionLevel() <= limlevel && cmpmgr.checkfixedDL() && !simplify()) {
-			cmpmgr.topDecision().increaseModels(0);
+			cmpmgr.topDecision().increaseModels((T_data)0, false);
 			bstate = backtrack();
 			if(bstate == EXIT) break;
 			else { assert(false); abort(); }
@@ -527,19 +572,29 @@ void Counter::count_main()
 		}
 
 		// DECIDE A LITERAL FROM TOP COMPONENT
-		Var dec_var = cmpmgr.pickBranchVar(activity);
+		Var dec_var = cmpmgr.pickBranchVar(activity, tdscore);
 		decisions++;
 
 		newDecisionLevel();
 		cmpmgr.pushDecision(trail.size());
-		uncheckedEnqueue(mkLit(dec_var, polarity[dec_var]));
-	}
 
-	mpz_mul_2exp(npmodels.get_mpz_t (), cmpmgr.topDecision().totalModels().get_mpz_t (), nIsoPVars());
+		Lit dlit = mkLit(dec_var, polarity[dec_var]);
+		uncheckedEnqueue(dlit);
+		if(wc) {
+			cmpmgr.topDecision().setBranchWeight(lit_weight[toInt(dlit)]);
+			cmpmgr.setDecCand();
+		}
+	}
+	sat = cmpmgr.topDecision().hasModel();
+
+	if(wc)
+		npmodels = cmpmgr.topDecision().totalModels() * gweight;
+	else
+		npmodels = cmpmgr.topDecision().totalModels() << nIsoPVars();
 }
 
-
-bool Counter::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selectors,
+template <typename T_data>
+bool Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selectors,
 		int& out_btlevel, unsigned int &lbd, unsigned int &szWithoutSelectors) {
 	int pathC = 0;
 	Lit p = lit_Undef;
@@ -748,7 +803,8 @@ bool Counter::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selectors,
 	return true;
 }
 
-Counter::btStateT Counter::backtrack(int backtrack_level, Lit lit, CRef cr) {
+template <typename T_data>
+btStateT Counter<T_data>::backtrack(int backtrack_level, Lit lit, CRef cr) {
 	if (decisionLevel() == 0)
 		return EXIT;
 	for (;;) {
@@ -756,7 +812,6 @@ Counter::btStateT Counter::backtrack(int backtrack_level, Lit lit, CRef cr) {
 		assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
 
 		if (cmpmgr.topDecision().isFirstBranch()
-				&& (!hasThreshold || !cmpmgr.topDecision().satisfyNorma())
 				&& !asynch_interrupt) {
 			// FirstBranch
 
@@ -767,11 +822,12 @@ Counter::btStateT Counter::backtrack(int backtrack_level, Lit lit, CRef cr) {
 
 			limlevel = decisionLevel();
 			cmpmgr.topDecision().changeBranch();
+			if(wc) cmpmgr.topDecision().setBranchWeight(lit_weight[toInt(~dlit)]);
 			return RESOLVED;
 		} else {
 			// SecondBranch
 			cmpmgr.prevDecision().increaseModels(
-					cmpmgr.topDecision().totalModels());
+					cmpmgr.topDecision().totalModels(), cmpmgr.topDecision().hasModel());
 			if (!asynch_interrupt)
 				cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),
 						cmpmgr.topDecision().totalModels());
@@ -800,7 +856,8 @@ Counter::btStateT Counter::backtrack(int backtrack_level, Lit lit, CRef cr) {
 	return EXIT;
 }
 
-void Counter::cancelCurDL() {
+template <typename T_data>
+void Counter<T_data>::cancelCurDL() {
 	for (int c = trail.size() - 1; c >= trail_lim.last(); c--) {
 		Var x = var(trail[c]);
 		assigns[x] = l_Undef;
@@ -810,7 +867,8 @@ void Counter::cancelCurDL() {
 	trail.shrink(trail.size() - trail_lim.last());
 }
 
-lbool Counter::solveSAT(void) {
+template <typename T_data>
+lbool Counter<T_data>::solveSAT(void) {
 	newDecisionLevel();
 	int sat_start_dl = decisionLevel();
 
@@ -852,7 +910,8 @@ lbool Counter::solveSAT(void) {
 	return status;
 }
 
-lbool Counter::searchBelow(int start_dl) {
+template <typename T_data>
+lbool Counter<T_data>::searchBelow(int start_dl) {
 	int backtrack_level;
 	int conflictC = 0;
 	vec<Lit> learnt_clause, selectors;
@@ -988,18 +1047,34 @@ lbool Counter::searchBelow(int start_dl) {
 
 //=================================================================================================
 // Print methods:
-void Counter::printStats() const
+static mpfr::mpreal Log10(const mpz_class& num) {
+  assert(num >= 0);
+  if (num == 0) {
+    return -std::numeric_limits<double>::infinity();
+  }
+  mpfr::mpreal num1(num.get_mpz_t());
+  return mpfr::log10(num1);
+}
+static void PrintLog10(const mpz_class& num) {
+  cout<<"c s log10-estimate "<<Log10(num)<<endl;
+}
+static void PrintLog10(const mpfr::mpreal& num) {
+  cout<<"c s log10-estimate "<<mpfr::log10(num)<<endl;
+}
+
+template <typename T_data>
+void Counter<T_data>::printStats() const
 {
 	if(verbosity_c) {
-		double cpu_time = cpuTime();
-		double mem_used = memUsedPeak();
+		// double cpu_time = cpuTime();
+		// double mem_used = memUsedPeak();
 
 		printf("c o [Statistics]\n");
-		printf("c o conflicts             = %-11"PRIu64" (presat %"PRIu64", count %"PRIu64", sat %"PRIu64")\n", conflicts, conflicts_pre, conflicts-conflicts_pre-conflicts_sg, conflicts_sg);
-		printf("c o decisions             = %-11"PRIu64" (presat %"PRIu64", count %"PRIu64", sat %"PRIu64")\n", decisions, decisions_pre, decisions-decisions_pre-decisions_sg, decisions_sg);
-		printf("c o propagations          = %-11"PRIu64" (presat %"PRIu64", count %"PRIu64", sat %"PRIu64")\n", propagations, propagations_pre, propagations-propagations_pre-propagations_sg, propagations_sg);
+		printf("c o conflicts             = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", conflicts, conflicts-conflicts_sg, conflicts_sg);
+		printf("c o decisions             = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", decisions, decisions-decisions_sg, decisions_sg);
+		printf("c o propagations          = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", propagations, propagations-propagations_sg, propagations_sg);
 		printf("c o simp dbs              = %-11"PRIu64" (%.3f s)\n", simp_dbs, simplify_time);
-		printf("c o reduce dbs            = %-11"PRIu64" (presat %"PRIu64", pmc %"PRIu64")\n", nbReduceDB, reduce_dbs_pre, nbReduceDB-reduce_dbs_pre);
+		printf("c o reduce dbs            = %-11"PRIu64"\n", nbReduceDB);
 		printf("c o learnts (uni/bin/lbd2)= %"PRIu64"/%"PRIu64"/%"PRIu64"\n", nbUn, nbBin, nbDL2);
 		printf("c o last learnts          = %-11d (%"PRIu64" learnts removed, %4.2f%%)\n", learnts.size(), nbRemovedClauses, nbRemovedClauses * 100 / (double)conflicts);
 
@@ -1008,56 +1083,56 @@ void Counter::printStats() const
 		printf("c o SAT calls             = %-11"PRIu64" (SAT %"PRIu64", UNSAT %"PRIu64")\n", solves, sats, solves-sats);
 		printf("c o SAT starts            = %"PRIu64"\n", starts);
 		printf("c o backjumps             = %-11"PRIu64" (sp %"PRIu64") [init %s / final %s]\n", nbackjumps+nbackjumps_sp, nbackjumps_sp, opt_bj ? "on" : "off", on_bj ? "on" : "off");
-		printf("c o postprocess           = %s\n", postprocessing ? "on" : "off");
-		printf("c o hasThereshold         = %s\n", hasThreshold   ? "on" : "off");
-		if (mem_used != 0)
-			printf("c o Memory used           = %.2f MB\n", mem_used);
-		printf("c o CPU time              = %.3f s\n", cpu_time);
-		printf("c o Real time             = %.3f s\n", realTime() - real_stime);
+
+		// if (mem_used != 0)
+		//	 printf("c o Memory used           = %.2f MB\n", mem_used);
+		// printf("c o CPU time              = %.3f s\n", cpu_time);
+		// printf("c o Real time             = %.3f s\n", realTime() - real_stime);
 		printf("c o\n");
 
 		printf("c o [Result]\n");
 	}
 	if(!asynch_interrupt) {
-		printf("s %s\n", npmodels>0 ? "SATISFIABLE" : "UNSATISFIABLE");
-		printf("c s type %s\n", mc ? "mc" : "pmc");
-		if(hasThreshold && npmodels >= norma_orig) {
-			printf("c o upto=");
-			mpz_out_str(stdout, 10, norma_orig.get_mpz_t());
-			printf("\n");
-			printf("c s lower bound arb int ");
-			mpz_out_str(stdout, 10, npmodels.get_mpz_t());
-			printf("\n");
+		printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
+		if(mc) {
+			if(wc)
+				printf("c s type wmc\n");
+			else
+				printf("c s type mc\n");
 		} else {
-			if(npmodels == 0 ) {
-//				printf("c s log10-estimate %.15g\n", log10(0));
-				printf("c s exact arb int 0\n");
-			} else {
-//				// adopt an easy way for log10-estimate. not sure about the precision...
-//				printf("c s log10-estimate %.15g\n", log10(mpz_get_d(npmodels.get_mpz_t())));
-				printf("c s exact arb int ");
-				mpz_out_str(stdout, 10, npmodels.get_mpz_t());
-				printf("\n");
+			if(wc)
+				printf("c s type pwmc\n");
+			else
+				printf("c s type pmc\n");
+		}
+
+		if(!sat) {
+			printf("c s exact arb int 0\n");
+			printf("c s log10-estimate -inf\n");
+		} else {
+			if(wc) {
+				cout.precision(opt_precision);
+				cout << "c s exact double prec-sci " <<  npmodels << endl;
+				PrintLog10(npmodels);
+			}
+			else {
+				cout << "c s exact arb int " << npmodels << endl;
+				cout.precision(opt_precision);
+				PrintLog10(npmodels);
 			}
 		}
 	} else {
-		if(postprocessing) {
-			printf("s %s\n", npmodels>0 ? "SATISFIABLE" : "UNKNOWN");
-			printf("c s type %s\n", mc ? "mc" : "pmc");
-			printf("c s lower bound arb int ");
-			mpz_out_str(stdout, 10, npmodels.get_mpz_t());
-			printf("\n");
-		}
-		else
 			printf("s UNKNOWN\n");
 	}
+	printf("c o\n");
 	fflush(stdout);
 }
 
 //=================================================================================================
 // Methods for Debug
 
-void Counter::toDimacsRaw(const char *file)
+template <typename T_data>
+void Counter<T_data>::toDimacsRaw(const char *file)
 {
 	FILE* f = fopen(file, "wr");
 	if (f == NULL)
@@ -1084,11 +1159,89 @@ void Counter::toDimacsRaw(const char *file)
 	fclose(f);
 }
 
+// Methods for Importing instance and additional information
+template <>
+void Counter<mpz_class>::loadWeight(const PPMC::Instance &ins)
+{
+	assert(!wc);
+	return;
+}
+template <>
+void Counter<mpfr::mpreal>::loadWeight(const PPMC::Instance &ins)
+{
+	assert(wc);
+	gweight = ins.gweight;
+	lit_weight.clear();
+	lit_weight.growTo(2*npvars);
+	for(int i=0; i<npvars; i++) {
+		lit_weight[toInt(mkLit(i))] = ins.lit_weights[toInt(mkLit(i))];
+		lit_weight[toInt(~mkLit(i))] = ins.lit_weights[toInt(~mkLit(i))];
+	}
+	// assert(lit_weight.size() == ins.lit_weights.size());
+}
+
+template <typename T_data>
+void Counter<T_data>::import(const PPMC::Instance &ins)
+{
+	int nvars = ins.vars;
+	watches  .init(mkLit(nvars-1, true ));
+	watchesBin  .init(mkLit(nvars-1, true ));
+	assigns  .growTo(nvars, l_Undef);
+	vardata  .growTo(nvars, mkVarData(CRef_Undef, 0));
+	activity .growTo(nvars, 0);
+	seen     .growTo(nvars, 0);
+	permDiff  .growTo(nvars, 0);
+	polarity .growTo(nvars, true);
+	decision .growTo(nvars);
+	trail    .capacity(nvars);
+	for(int i=0; i<nvars; i++)
+		setDecisionVar(i, true);
+
+	CRef cr;
+	for(auto c : ins.clauses) {
+		cr = ca.alloc(c, false);
+		clauses.push(cr);
+		attachClause(cr);
+	}
+	for(auto c : ins.learnts) {
+		cr = ca.alloc(c, true);
+		clauses.push(cr);
+		attachClause(cr);
+	}
+
+	npvars = ins.npvars;
+	npvars_isolated = ins.freevars;
+
+	sat = !ins.unsat;
+	wc = ins.weighted;
+	mc = !ins.projected;
+	loadWeight(ins);
+}
+
+template <typename T_data>
+void Counter<T_data>::computeTDScore(const vector<int>& dists, double coef)
+{
+	tdscore.clear();
+	tdscore.growTo(npvars, 0);
+
+	if(dists.size() == 0) return;
+
+	int max_dst = 0;
+	for(int i=0; i<nVars(); i++) {
+		max_dst = max(max_dst, dists[i]);
+	}
+	if(max_dst == 0) return;
+	for(int i=0; i<npvars; i++) {
+			tdscore[i] = coef * ((double)(max_dst - dists[i])) / (double)max_dst;
+	}
+}
+
 //=================================================================================================
 // Inline Methods
 // NOTE: These are copies of the inline methods in Glucose.
 
-inline unsigned int Counter::computeLBDMC(const vec<Lit> & lits,int end) {
+template <typename T_data>
+inline unsigned int Counter<T_data>::computeLBDMC(const vec<Lit> & lits,int end) {
 	int nblevels = 0;
 	MYFLAG++;
 
@@ -1118,7 +1271,8 @@ inline unsigned int Counter::computeLBDMC(const vec<Lit> & lits,int end) {
 	return nblevels;
 }
 
-inline unsigned int Counter::computeLBDMC(const Clause &c) {
+template <typename T_data>
+inline unsigned int Counter<T_data>::computeLBDMC(const Clause &c) {
 	int nblevels = 0;
 	MYFLAG++;
 
@@ -1145,3 +1299,6 @@ inline unsigned int Counter::computeLBDMC(const Clause &c) {
 	}
 	return nblevels;
 }
+
+template class GPMC::Counter<mpz_class>;
+template class GPMC::Counter<mpfr::mpreal>;

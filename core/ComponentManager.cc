@@ -1,12 +1,16 @@
 #include "core/Component.h"
 #include "mtl/Sort.h"
+#include "utils/Options.h"
 #include <utility>
 
 using namespace GPMC;
 
 #define CACHE
 
-void ComponentManager::init(int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca, bool hasThreshold, mpz_class norma){
+static IntOption  opt_vs ("ComponetManager", "vs", "Varable Selection Heuristics", 1, IntRange(0,1));
+
+template <typename T_data>
+void ComponentManager<T_data>::init(bool weighted, int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca){
 	vec< vec<Var> > binlinks(nvars);
 	vec< vec<ClID> > occ(nvars);
 
@@ -56,19 +60,19 @@ void ComponentManager::init(int nvars, int npvars, const vec<CRef>& sclauses, co
 
 #ifdef CACHE
 	cache_.init();
-	CachedComponent::adjustPackSize(nvars, clauses_.size());
+	CachedComponent<T_data>::adjustPackSize(nvars, clauses_.size());
 #endif
 
-	hasThreshold_ = hasThreshold;
-	norma_ = norma;
 	initComponentStack(nvars, clauses_.size());
 	initDecisionStack();
 
+	weighted_ = weighted;
 	components = 1;
 	num_try_split = 0;
 }
 
-void ComponentManager::initComponentStack(int nvars, int nlongcls) {
+template <typename T_data>
+void ComponentManager<T_data>::initComponentStack(int nvars, int nlongcls) {
 	comp_stack_.clear();
 	comp_stack_.reserve(nvars + 1);
 	comp_stack_.push_back(new Component(nvars, nlongcls, true));
@@ -85,16 +89,18 @@ void ComponentManager::initComponentStack(int nvars, int nlongcls) {
 #endif
 }
 
-void ComponentManager::initDecisionStack()
+template <typename T_data>
+void ComponentManager<T_data>::initDecisionStack()
 {
 	dl_.clear();
-	dl_.push_back(Decision(0,0,hasThreshold_,norma_));
+	dl_.push_back(Decision<T_data>(0,0));
 	dl_.back().changeBranch();
 }
 
-int ComponentManager::splitComponent(const vec<lbool>& assigns){
+template <typename T_data>
+int ComponentManager<T_data>::splitComponent(const vec<lbool>& assigns, const vec<T_data>& lit_weight){
 	int p; Var v; ClID c;
-	mpz_class tmp_model_count;
+	T_data tmp_model_count;
 
 	unsigned oldtop = comp_stack_.size();
 	unsigned boundary = oldtop;
@@ -117,8 +123,14 @@ int ComponentManager::splitComponent(const vec<lbool>& assigns){
 		if (varseen_[v] == SC_CANDIDATE) {
 			searchComponent(v, assigns, nvars_in_comp, ncls_in_comp);
 			if (nvars_in_comp == 1) {
-				if(isPVar(v)) 	dl_.back().increaseModels(2);
-				else 			dl_.back().increaseModels(1);
+				if(isPVar(v)){
+					if(weighted_)
+						dl_.back().increaseModels(lit_weight[toInt(mkLit(v, true))]+lit_weight[toInt(mkLit(v, false))], true);
+					else
+						dl_.back().increaseModels((T_data)2, true);
+				}
+				else
+					dl_.back().increaseModels((T_data)1, true);
 				varseen_[v] = SC_DONE;
 			}else{
 				comp_stack_.push_back(new Component(nvars_in_comp, ncls_in_comp, isPVar(v)));
@@ -149,7 +161,7 @@ int ComponentManager::splitComponent(const vec<lbool>& assigns){
 					assert(cache_.hasEntry(id));
 					assert(cache_.hasEntry(targetcomp.id()));
 					if (cache_.requestValueOf(*comp_stack_.back(), tmp_model_count)) {
-						dl_.back().increaseModels(tmp_model_count);
+						dl_.back().increaseModels(tmp_model_count, true);
 						cache_.eraseEntry(id);
 						delete comp_stack_.back();
 						comp_stack_.pop_back();
@@ -164,7 +176,7 @@ int ComponentManager::splitComponent(const vec<lbool>& assigns){
 		}
 	}
 
-	Decision& curdl = dl_.back();
+	Decision<T_data>& curdl = dl_.back();
 	curdl.setSplitCompsEnd(comp_stack_.size());
 
 	for (auto i = oldtop; i < boundary; i++)
@@ -177,7 +189,8 @@ int ComponentManager::splitComponent(const vec<lbool>& assigns){
 	return comp_stack_.size() - oldtop;
 }
 
-void ComponentManager::searchComponent(Var seed_var, const vec<lbool>& assigns, int& nvars_in_comp, int& ncls_in_comp){
+template <class T_data>
+void ComponentManager<T_data>::searchComponent(Var seed_var, const vec<lbool>& assigns, int& nvars_in_comp, int& ncls_in_comp){
 	vec<Var> vars_in_comp;
 
 	ncls_in_comp = 0;
@@ -241,7 +254,8 @@ void ComponentManager::searchComponent(Var seed_var, const vec<lbool>& assigns, 
 
 }
 
-Var ComponentManager::pickBranchVar(const vec<double>& activity)
+template <class T_data>
+Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const vec<double>& tdscore)
 {
 	// GPMC uses the lexicographical order of var_frequency and activity for choosing a decision var.
 	// ToDo: try other heuristics
@@ -254,26 +268,57 @@ Var ComponentManager::pickBranchVar(const vec<double>& activity)
 	double max_score_a = -1;
 	double max_score_f = -1;
 
-	int p;
-	for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
-		double score_f = var_frequency_[c[p]];
-		double score_a = activity[c[p]];
-		if( score_f > max_score_f) {
-			max_score_f = score_f;
-			max_score_a = score_a;
-			maxv = c[p];
-		} else if ( score_f == max_score_f && score_a > max_score_a) {
-			max_score_a = score_a;
-			maxv = c[p];
+	if(opt_vs == 0) {
+		int p;
+		for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
+			double score_f = var_frequency_[c[p]] + tdscore[c[p]];
+			double score_a = activity[c[p]];
+			if( score_f > max_score_f) {
+				max_score_f = score_f;
+				max_score_a = score_a;
+				maxv = c[p];
+				//		} else if ( score_f == max_score_f && score_a > max_score_a) {
+			} else if ( score_f >= max_score_f * 0.90 && score_a > max_score_a * 1.5) {
+				max_score_a = score_a;
+				maxv = c[p];
+			}
+		}
+	} else {
+		double max_score_td = -1;
+		int p;
+		for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
+			double score_td = tdscore[c[p]];
+			double score_f = var_frequency_[c[p]];
+			double score_a = activity[c[p]];
+
+			if(score_td > max_score_td) {
+				max_score_td = score_td;
+				max_score_f = score_f;
+				max_score_a = score_a;
+				maxv = c[p];
+			}
+			else if( score_td == max_score_td) {
+				if(score_f > max_score_f) {
+					max_score_f = score_f;
+					max_score_a = score_a;
+					maxv = c[p];
+				} else if (score_f == max_score_f && score_a > max_score_a) {
+					max_score_a = score_a;
+					maxv = c[p];
+				}
+			}
 		}
 	}
-
 	assert(maxv != var_Undef);
 	return maxv;
 }
 
-void ComponentManager::removeCachePollutions() {
+template <class T_data>
+void ComponentManager<T_data>::removeCachePollutions() {
 	assert(topDecision().baseComp() == comp_stack_.size()-1);
 	cache_.cleanAllDescendantsOf(comp_stack_.back()->id());
 	// cache_.cleanPollutionsInvolving(comp_stack_.back()->id());
 }
+
+template class GPMC::ComponentManager<mpz_class>;
+template class GPMC::ComponentManager<mpfr::mpreal>;
