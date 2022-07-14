@@ -151,7 +151,7 @@ int main(int argc, char** argv)
 		IntOption opt_mode("GPMC -- MAIN", "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 3=wpmc).", 0, IntRange(0, 3));
 
 		IntOption opt_varlimit("GPMC -- PP", "varlim", "limit on #Vars in Preprocessing.", 150000, IntRange(0, INT32_MAX));
-		DoubleOption opt_pptimelimit("GPMC -- PP", "pptimelim", "Time shreshold for deciding if it performs the last step of preprocessing.", 120, DoubleRange(0, true, 3600, true));
+		DoubleOption opt_pptimelimit("GPMC -- PP", "pptimelim", "Time shreshold for deciding if it performs the last step of preprocessing.", 120, DoubleRange(0, true, DBL_MAX, true));
 		IntOption opt_ppverb("GPMC -- PP", "ppverb", "Preprocessing verbosity level (0=some, 1=more).", 0, IntRange(0, 1));
 
 		BoolOption opt_td("GPMC -- MAIN", "td", "Tree Decomposition", true);
@@ -159,7 +159,7 @@ int main(int argc, char** argv)
 		DoubleOption  opt_td_dlim("GPMC -- MAIN", "tddenlim", "Limit on density of graph in Tree Decomposition", 0.10, DoubleRange(0, true, 1, true));
 		DoubleOption  opt_td_rlim("GPMC -- MAIN", "tdratiolim", "Limit on ratio (edges/vars) of graph in Tree Decomposition", 30.0, DoubleRange(0, true, 1000, true));
 		DoubleOption  opt_td_twvar("GPMC -- MAIN", "twvarlim", "Limit on tw/vars", 0.25, DoubleRange(0, true, 1, true));
-		DoubleOption opt_td_to("GPMC -- MAIN", "tdtime", "Time Limit on Tree Decomposition", 0, DoubleRange(0, true, 120, true));
+		DoubleOption opt_td_to("GPMC -- MAIN", "tdtime", "Time Limit on Tree Decomposition", 0, DoubleRange(0, true, INT32_MAX, true));
 		DoubleOption opt_coef("GPMC -- MAIN", "coef", "TDscore coefficient", 100, DoubleRange(0, true, 10000000, true));
 		StringOption opt_tdout("GPMC -- MAIN", "tdout", "Outfile for Tree Decomposition", "NULL");
 
