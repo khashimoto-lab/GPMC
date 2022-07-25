@@ -1,7 +1,7 @@
 # GPMC Installation
 
 ## Requirement
-- g++ 4.7 or later
+- g++ 4.8.5 or later
 - cmake and make
 - GMP bignum package
 - MPFR
@@ -9,6 +9,6 @@
 
 ## Installation
 ```
-$ ./build.sh r
+$ ./starexec_build
 ```
 The binary executable file *gpmc* is put under bin/.
