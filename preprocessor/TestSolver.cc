@@ -71,12 +71,39 @@ bool TestSolver::falsifiedBy(Lit assump)
 }
 
 bool TestSolver::falsifiedBy(Lit l1, Lit l2)
-{
+{	
 	vec<Lit> ps;
+	if(value(l1) != l_Undef || value(l2) != l_Undef)
+		return false;
+
 	ps.push(l1);
 	ps.push(l2);
 	return falsifiedBy(ps);
 }
+
+/*
+bool TestSolver::falsifiedBy(vec<Lit>& assump)
+{	
+	for(int i=assump.size()-1; i>=0; i--) {
+		if(value(assump[i]) == l_False)
+			return true;
+		else if (value(assump[i]) == l_True) {
+			assump[i] = assump.last();
+			assump.pop();
+		}
+	}
+	if(assump.size() == 0)
+		return false;
+
+	int sz = trail.size();
+	for(int i=0; i<assump.size(); i++)
+		uncheckedEnqueue(assump[i]);
+	CRef confl = propagate();
+	backTo(sz);
+
+	return confl != CRef_Undef;
+}
+*/
 
 bool TestSolver::falsifiedBy(vec<Lit>& assump)
 {
@@ -112,11 +139,11 @@ bool TestSolver::falsifiedBy(vec<Lit>& assump)
 			cancelUntil(backtrack_level);
 
 			if (learnt_clause.size() == 1){
-				if(value(learnt_clause[0]) != l_Undef) {
+				// if(value(learnt_clause[0]) != l_Undef) {
 					result = l_False;
 					break;
-				}
-				uncheckedEnqueue(learnt_clause[0]);
+				// }
+				// uncheckedEnqueue(learnt_clause[0]);
 			}else{
 				CRef cr = ca.alloc(learnt_clause, true);
 				ca[cr].setLBD(nblevels);
@@ -166,7 +193,9 @@ bool TestSolver::falsifiedBy(vec<Lit>& assump)
 				}
 			}
 
-			if (decisionLevel() == assump.size()) break;
+			// if (decisionLevel() == assump.size()) break;
+			if (decisionLevel() == assump.size()) continue;
+
 			newDecisionLevel();
 			uncheckedEnqueue(next);
 		}
@@ -176,6 +205,7 @@ End:
 	cancelUntil(0);
 	return result == l_False;
 }
+
 
 bool TestSolver::FailedLiterals()
 {

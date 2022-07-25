@@ -17,11 +17,11 @@ namespace PPMC {
 
 class Identifier {
 public:
-	Identifier(int vars) { cidx.resize(2*vars, -1); }
+	Identifier(int vars) { cidx.resize(2*vars, -1); num_elem = 0; }
 
 	void identify(Glucose::Lit l1, Glucose::Lit l2);
 
-	bool hasEquiv() { return eqc.size() > 0; }
+	bool hasEquiv() { return num_elem > 0; /* eqc.size() > 0; */ }
 	std::vector<std::vector<Glucose::Lit>>& getEquivClasses() { return eqc; }
 	Glucose::Lit delegateLit(Glucose::Lit l) { return (cidx[toInt(l)] == -1) ? l : eqc[cidx[toInt(l)]][0]; }
 
@@ -30,6 +30,7 @@ private:
 
 	std::vector<std::vector<Glucose::Lit>> eqc;
 	std::vector<int> cidx;
+	int num_elem;
 };
 
 class Preprocessor {

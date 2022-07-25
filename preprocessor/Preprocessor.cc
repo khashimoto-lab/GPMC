@@ -17,6 +17,7 @@ void Identifier::identify(Lit l1, Lit l2)
 		eqc.push_back({l1, l2});
 		cidx[toInt(~l1)] = cidx[toInt(~l2)] = eqc.size();
 		eqc.push_back({~l1, ~l2});
+		num_elem+=2;
 	}
 	else if (cidx[toInt(l1)] == -1) {
 		eqc[cidx[toInt(l2)]].push_back(l1);
@@ -60,6 +61,7 @@ void Identifier::MergeEquivClasses(int c1, int c2)
 		cidx[toInt(l)] = c1;
 	}
 	eqc[c2].clear();
+	num_elem--;
 }
 
 // Preprocessor
