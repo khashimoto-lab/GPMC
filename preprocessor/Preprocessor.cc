@@ -54,6 +54,18 @@ void Identifier::identify(Lit l1, Lit l2)
 		}
 	}
 }
+void Identifier::removeEquivClass(Lit l)
+{
+	if(cidx[toInt(l)] >= 0) {
+		for(Lit s : {l, ~l}) {
+			int idx = cidx[toInt(s)];
+			for(Lit le : eqc[idx])
+				cidx[toInt(le)] = -1;
+			eqc[idx].clear();
+		}
+		num_elem -= 2;
+	}
+}
 void Identifier::MergeEquivClasses(int c1, int c2)
 {
 	for (Lit l : eqc[c2]) {
@@ -147,36 +159,50 @@ bool Preprocessor::SAT_FLE()
 bool Preprocessor::Strengthen()
 {
 	TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
-	bool assigned = false;
+	bool removecl = false;
+	bool removelit = false;
 
 	for(int i=ins.clauses.size()-1; i>=0; i--) {
 		vec<Lit> assump;
 
 		for(int j=ins.clauses[i].size()-1; j>=0; j--) {
 			assump.clear();
-			for(int k=0; k<j; k++)
-				assump.push(~ins.clauses[i][k]);
-			for(int k=j+1; k<ins.clauses[i].size(); k++)
-				assump.push(~ins.clauses[i][k]);
+			removelit = false;
 
-			if(S.falsifiedBy(assump)) {
+			for(int k=0; k<ins.clauses[i].size(); k++) {
+				Lit l = ins.clauses[i][k];
+				if(S.value(l) == l_True) {
+					removecl = true;
+					break;
+				}
+				if(k == j) {
+					if(S.value(l) == l_False) {
+						removelit = true;
+						break;
+					}
+				} else if (S.value(l) == l_Undef) {
+					assump.push(~l);
+				}
+			}
+			if(removecl) break;
 
+			if(removelit || S.falsifiedBy(assump)) {
 				for(int k=j+1; k<ins.clauses[i].size(); k++)
 					ins.clauses[i][k-1] = ins.clauses[i][k];
 				ins.clauses[i].pop_back();
 
 				if(ins.clauses[i].size() == 1) {
-					assigned = true;
 					S.assign(ins.clauses[i][0]);
 					S.bcp(); // no conflict because SAT test was already passed.
-					sspp::SwapDel(ins.clauses, i);
+					removecl = true;
 					break;
 				}
 			}
 		}
-	}
-	if(assigned) {
-		S.resetClauses(ins.clauses);
+		if(removecl) {
+			sspp::SwapDel(ins.clauses, i);
+			removecl = false;
+		}
 	}
 
 	S.exportLearnts(ins.learnts);
@@ -222,6 +248,8 @@ bool Preprocessor::MergeAdjEquivs()
 		//
 
 		TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
+		Glucose::vec<Glucose::Lit>& trail = S.getTrail();
+
 		for (Var v1 = 0; v1 < ins.vars; v1++) {
 			for (Var v2 = v1+1; v2 < ins.vars; v2++) {
 				if (!adjmat[v1].Get(v2)) continue;
@@ -230,16 +258,47 @@ bool Preprocessor::MergeAdjEquivs()
 				Lit l2 = mkLit(v2);
 				int idx1, idx2;
 
+				if(S.value(l1) != l_Undef) break;
+				if(S.value(l2) != l_Undef) continue;
+
+				int pos = trail.size();
+
 				if (S.falsifiedBy(l1, l2) && S.falsifiedBy(~l1, ~l2)) {
-					Id.identify(l1, ~l2);
+						Id.identify(l1, ~l2);
 				}
 				else if (S.falsifiedBy(l1, ~l2) && S.falsifiedBy(~l1, l2)) {
-					Id.identify(l1, l2);
+						Id.identify(l1, l2);
+				}
+
+				if(trail.size()-pos > 0) {
+					int ppos = pos;
+					int cpos = trail.size();
+
+					while(ppos < cpos) {
+						for(int i=ppos; i<cpos; i++) {
+							int idx = Id.getIndex(trail[i]);
+							if(idx == -1) {
+								S.assign(trail[i]);
+							}
+							else {
+								for(Lit l : Id.getEquivClasses()[idx])
+									S.assign(l);
+							}
+							S.bcp();
+
+							Id.removeEquivClass(trail[i]);
+						}
+						ppos = cpos;
+						cpos = trail.size();
+					}
+					for(int i=pos; i<trail.size(); i++)
+						ins.assignedLits.push_back(trail[i]);
 				}
 			}
 		}
-		//S.exportLearnts(ins.learnts);
 	}
+
+	bool subsump = false;
 	if (Id.hasEquiv()) {
 		vector<Lit> map(2*ins.vars);
 		int new_id = 0;
@@ -273,20 +332,31 @@ bool Preprocessor::MergeAdjEquivs()
 		ins.ispvars.resize(ins.npvars, true);
 		ins.ispvars.resize(ins.vars, false);
 
+		if(ins.assignedLits.size() > 0) {
+			vector<Lit> assignedLits_new;
+			for(Lit l : ins.assignedLits)
+				assignedLits_new.push_back(map[toInt(l)]);
+			ins.assignedLits = assignedLits_new;
+		}
+
 		RewriteClauses(ins.clauses, map);
 		RewriteClauses(ins.learnts, map);
 
-		if(ins.assignedLits.size() > 0) {
-			sspp::SortAndDedup(ins.assignedLits);
-
-			TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
-			Compact(S.getAssigns());
-			sspp::SortAndDedup(ins.clauses);
-			sspp::SortAndDedup(ins.learnts);
-		}
-
-		Subsume();
+		subsump = true;
 	}
+
+	if(ins.assignedLits.size() > 0) {
+		sspp::SortAndDedup(ins.assignedLits);
+
+		TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
+		Compact(S.getAssigns());
+		sspp::SortAndDedup(ins.clauses);
+		sspp::SortAndDedup(ins.learnts);
+
+		subsump = true;
+	}
+
+	if(subsump) Subsume();
 
 	if(verbose >= 1)
 		printCNFInfo("EquivEl");
@@ -303,7 +373,7 @@ bool Preprocessor::VariableEliminate()
 	int origclssz = ins.clauses.size();
 
 	int times = 0;
-	while(times < 5) {
+	while(times < 400) {
 		vars.clear();
 		pickVars(vars);
 		if(vars.size() == 0) break;
@@ -333,11 +403,12 @@ bool Preprocessor::VariableEliminate()
 		Compact(cassign);
 		Subsume();
 
-		if(verbose >= 1)
-			printCNFInfo("VE");
 		times++;
 		if(ins.clauses.size() > origclssz) break;
 	}
+
+	if(verbose >= 1)
+		printCNFInfo("VE");
 
 	return true;
 }
@@ -412,8 +483,9 @@ void Preprocessor::pickVars(vector<Var>& vars)
 	for(int i=ins.npvars; i<ins.vars; i++) {
 		if(min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) == 0) continue;
 
-		if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4) ||
-					freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))])
+//		if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4) ||
+//					freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))])
+		if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4))
 			vars.push_back(i);
 	}
 }

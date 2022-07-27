@@ -32,6 +32,7 @@ public:
 	bool bcp() { return propagate() == Glucose::CRef_Undef; }
 
 	Glucose::vec<Glucose::lbool>& getAssigns() { return assigns; }
+	Glucose::vec<Glucose::Lit>& getTrail() { return trail; }
 
 private:
 	void newVars(int nvars);

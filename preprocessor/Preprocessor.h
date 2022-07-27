@@ -21,9 +21,11 @@ public:
 
 	void identify(Glucose::Lit l1, Glucose::Lit l2);
 
-	bool hasEquiv() { return num_elem > 0; /* eqc.size() > 0; */ }
+	bool hasEquiv() { return num_elem > 0; }
 	std::vector<std::vector<Glucose::Lit>>& getEquivClasses() { return eqc; }
 	Glucose::Lit delegateLit(Glucose::Lit l) { return (cidx[toInt(l)] == -1) ? l : eqc[cidx[toInt(l)]][0]; }
+	int getIndex(Glucose::Lit l) { return cidx[toInt(l)]; }
+	void removeEquivClass(Glucose::Lit l);
 
 private:
 	void MergeEquivClasses(int c1, int c2);
