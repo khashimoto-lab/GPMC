@@ -24,8 +24,6 @@ static DoubleOption opt_bj_thd (_mc, "bjthd", "Backjumping threshold", 0.5, Doub
 static BoolOption opt_simp     (_mc, "rmvsatcl", "Remove satisfied clauses", true);
 static IntOption  opt_simp_thd (_mc, "rmvsatclthd", "Thereshold of removing satisfied clauses", 2, IntRange(0,INT32_MAX));
 
-static IntOption opt_precision (_mc, "prec", "Precision of output of weighted model counting", 15, IntRange(0,INT32_MAX));
-
 //=================================================================================================
 // Constructor/Destructor:
 
@@ -1111,15 +1109,21 @@ void Counter<T_data>::printStats() const
 			printf("c s log10-estimate -inf\n");
 		} else {
 			if(wc) {
-				cout.precision(opt_precision);
-				cout << "c s exact double prec-sci " <<  npmodels << endl;
-				PrintLog10(npmodels);
+				int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
+				cout.precision(precision);
+				if(precision > 15) {
+					cout << "c o precision " << precision << endl;
+					cout << "c s exact prec-sci " <<  npmodels << endl;
+				} else {
+					cout << "c s exact double prec-sci " <<  npmodels << endl;
+				}
 			}
 			else {
 				cout << "c s exact arb int " << npmodels << endl;
-				cout.precision(opt_precision);
-				PrintLog10(npmodels);
 			}
+
+			cout.precision(15);
+			PrintLog10(npmodels);
 		}
 	} else {
 			printf("s UNKNOWN\n");

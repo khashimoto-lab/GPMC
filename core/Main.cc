@@ -75,6 +75,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "preprocessor/Preprocessor.h"
 // #include "core/Solver.h"
 #include "core/Counter.h"
+#include <mpfr/mpreal.h>
 
 using namespace Glucose;
 using namespace GPMC;
@@ -149,6 +150,7 @@ int main(int argc, char** argv)
 		IntOption    mem_lim("MAIN", "mem-lim","Limit on memory usage in megabytes.\n", INT32_MAX, IntRange(0, INT32_MAX));
 
 		IntOption opt_mode("GPMC -- MAIN", "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 3=wpmc).", 0, IntRange(0, 3));
+		IntOption opt_precision ("GPMC -- MAIN", "prec", "Precision of output of weighted model counting", 15, IntRange(15,INT32_MAX));
 
 		IntOption opt_varlimit("GPMC -- PP", "varlim", "limit on #Vars in Preprocessing.", 150000, IntRange(0, INT32_MAX));
 		DoubleOption opt_pptimelimit("GPMC -- PP", "pptimelim", "Time shreshold for deciding if it performs the last step of preprocessing.", 120, DoubleRange(0, true, DBL_MAX, true));
@@ -165,6 +167,8 @@ int main(int argc, char** argv)
 
 		parseOptions(argc, argv, true);
 
+		if(opt_precision > 15)
+			mpfr::mpreal::set_default_prec(mpfr::digits2bits(opt_precision));
 
 		PPMC::Preprocessor PP(false, opt_varlimit, opt_pptimelimit, opt_ppverb);
 		PPMC::Instance::Mode mode = getMode(opt_mode);
