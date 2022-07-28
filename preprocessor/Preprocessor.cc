@@ -118,6 +118,11 @@ bool Preprocessor::Simplify()
 			break;
 	}
 
+	for(int i=ins.learnts.size()-1; i>=0; i--) {
+		vector<Lit>& clause = ins.learnts[i];
+		if(clause.size() > 3)
+			sspp::SwapDel(ins.learnts, i);
+	}
 	if(cpuTime() < time_limit)
 		SAT_FLE();
 
@@ -264,10 +269,10 @@ bool Preprocessor::MergeAdjEquivs()
 				int pos = trail.size();
 
 				if (S.falsifiedBy(l1, l2) && S.falsifiedBy(~l1, ~l2)) {
-						Id.identify(l1, ~l2);
+					Id.identify(l1, ~l2);
 				}
 				else if (S.falsifiedBy(l1, ~l2) && S.falsifiedBy(~l1, l2)) {
-						Id.identify(l1, l2);
+					Id.identify(l1, l2);
 				}
 
 				if(trail.size()-pos > 0) {
@@ -422,7 +427,7 @@ bool Preprocessor::DefVariableEliminate()
 	int origclssz = ins.clauses.size();
 
 	int times = 0;
-	while(times < 5) {
+	while(times < 10) {
 		vars.clear();
 		pickDefVars(vars);
 		if(vars.size() == 0) break;
@@ -604,12 +609,12 @@ int Preprocessor::ElimVars(const vector<Var>& vars)
 			vector<Lit>& clause = ins.clauses[i];
 			for(int j = 0; j < clause.size(); j++) {
 				if(var(clause[j]) == v) {
-					bool positive = !sign(clause[j]);
+					bool positive = sign(clause[j]);
 					sspp::ShiftDel(clause, j);
 
-					if(positive) {	// negative
+					if(positive) {
 						pos.push_back(clause);
-					} else {	// positive
+					} else {
 						neg.push_back(clause);
 					}
 					sspp::SwapDel(ins.clauses, i);
@@ -659,8 +664,13 @@ int Preprocessor::ElimVars(const vector<Var>& vars)
 			}
 		}
 
-		if(pos.size() > 0 && neg.size() > 0)
+		if(pos.size() == 0) {
+			ins.assignedLits.push_back(mkLit(v));
+		} else if(neg.size() == 0) {
+			ins.assignedLits.push_back(~mkLit(v));
+		} else {
 			deleted[v] = true;
+		}
 	}
 
 	for(int i=ins.learnts.size()-1; i>=0; i--) {

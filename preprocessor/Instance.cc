@@ -216,4 +216,9 @@ void Instance::reflectMode(Mode mode) {
 			cout << (sign(l) ? "-":"") << (var(l)+1) << " ";
 		cout << "0" << endl;
 	}
+	for(auto c : learnts) {
+		for (auto l : c)
+			cout << (sign(l) ? "-":"") << (var(l)+1) << " ";
+		cout << "0" << endl;
+	}
 }

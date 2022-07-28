@@ -201,7 +201,12 @@ void TestSolver::exportLearnts(vector<vector<Lit>>& ilearnts)
 		Clause& c = ca[learnts[i]];
 		ilearnts.push_back({});
 		for(int j=0; j<c.size(); j++) {
-			ilearnts.back().push_back(c[j]);
+			if(value(c[j]) == l_True) {
+				ilearnts.pop_back();
+				break;
+			} else if(value(c[j]) == l_Undef) {
+				ilearnts.back().push_back(c[j]);
+			}
 		}
 	}
 }
