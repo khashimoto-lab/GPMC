@@ -38,7 +38,8 @@ private:
 class Preprocessor {
 	friend class Solver;
 public:
-	Preprocessor(bool outfile, int varlimit, double timelimit, int verbose) : var_limit(varlimit), time_limit(timelimit), outputDimacs(outfile), verbose(verbose) { }
+	Preprocessor();
+	// Preprocessor(bool outfile, int varlimit, double timelimit, int verbose) : var_limit(varlimit), time_limit(timelimit), outputDimacs(outfile), verbose(verbose) { }
 
 	void loadFromStdin(Instance::Mode mode) { ins.load(std::cin, mode); }
 	void loadFromFile(std::string filename, Instance::Mode mode);

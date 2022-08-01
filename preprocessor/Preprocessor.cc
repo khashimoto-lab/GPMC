@@ -3,11 +3,28 @@
 #include "lib_sharpsat_td/subsumer.hpp"
 #include "TestSolver.h"
 
+#include "utils/Options.h"
+
 using std::swap;
 
 using namespace PPMC;
 using namespace Glucose;
 using namespace std;
+
+// Options:
+static const char* _pp = "GPMC -- PP";
+static IntOption 	opt_varlimit	(_pp, "varlim", "limit on #Vars in Preprocessing.", 200000, IntRange(0, INT32_MAX));
+static DoubleOption opt_pptimelimit	(_pp, "pptimelim", "Time shreshold of preprocessing (not precise).", 120, DoubleRange(0, true, DBL_MAX, true));
+static IntOption	opt_pprep		(_pp, "ppreps",	"#reps of the main loop of preprocessing.", 20, IntRange(1, INT32_MAX));
+static IntOption 	opt_ppverb		(_pp, "ppverb", "Preprocessing verbosity level (0=some, 1=more).", 0, IntRange(0, 1));
+static BoolOption	opt_ee			(_pp, "pp_ee", "Use equivalent literal elimination.", true);
+static IntOption	opt_ee_varlim	(_pp, "ee-varlim", "limit on #Vars in equivalent literal elimination.", 150000, IntRange(0, INT32_MAX));
+static BoolOption	opt_ve			(_pp, "pp_ve", "Use variable elimination.", true);
+static IntOption	opt_vereps		(_pp, "ve_reps", "VE: the number of repetitions", 400, IntRange(0, INT32_MAX));
+static IntOption	opt_dvereps		(_pp, "dve_reps", "DefVE: the number of repetitions", 10, IntRange(0, INT32_MAX));
+static BoolOption	opt_vemore		(_pp, "ve_more", "VE: target more variables", true);
+static BoolOption	opt_cs			(_pp, "pp_cs", "Clause Strengthening", true);
+//
 
 // Identifier
 void Identifier::identify(Lit l1, Lit l2)
@@ -77,6 +94,13 @@ void Identifier::MergeEquivClasses(int c1, int c2)
 }
 
 // Preprocessor
+Preprocessor::Preprocessor() : 
+var_limit(opt_varlimit), 
+time_limit(opt_pptimelimit), 
+outputDimacs(false), 
+verbose(opt_ppverb)
+{ }
+
 void Preprocessor::loadFromFile(string filename, Instance::Mode mode)
 {
 	std::ifstream in(filename);
@@ -95,25 +119,29 @@ bool Preprocessor::Simplify()
 	if(ins.unsat || !SAT_FLE())
 		return false;
 
-	if(ins.vars > 2000000)
-		return true;
-	Strengthen();
 	if(ins.vars > var_limit)
 		return true;
 
+	if(opt_cs)
+		Strengthen();
+
 	int start_cls = ins.clauses.size();
 
-	for(int i=0; i<20; i++) {
+	for(int i=0; i<opt_pprep; i++) {
 		int vars = ins.vars;
 		int cls = ins.clauses.size();
 
-		if(cpuTime() > time_limit)
-			break;
+		if(cpuTime() > time_limit) break;
 
-		MergeAdjEquivs();
-		VariableEliminate();
-		DefVariableEliminate();
-		Strengthen();
+		if(opt_ee && ins.vars < opt_ee_varlim)
+			MergeAdjEquivs();
+		if(opt_ve) {
+			VariableEliminate();
+			DefVariableEliminate();
+		}
+		if(opt_cs)
+			Strengthen();
+
 		if(cpuTime() > time_limit || ((vars == ins.vars) && (cls == ins.clauses.size())) || (ins.clauses.size() > (double) 1.1 * start_cls))
 			break;
 	}
@@ -378,7 +406,7 @@ bool Preprocessor::VariableEliminate()
 	int origclssz = ins.clauses.size();
 
 	int times = 0;
-	while(times < 400) {
+	while(times < opt_vereps) {
 		vars.clear();
 		pickVars(vars);
 		if(vars.size() == 0) break;
@@ -427,7 +455,7 @@ bool Preprocessor::DefVariableEliminate()
 	int origclssz = ins.clauses.size();
 
 	int times = 0;
-	while(times < 10) {
+	while(times < opt_dvereps) {
 		vars.clear();
 		pickDefVars(vars);
 		if(vars.size() == 0) break;
@@ -488,9 +516,8 @@ void Preprocessor::pickVars(vector<Var>& vars)
 	for(int i=ins.npvars; i<ins.vars; i++) {
 		if(min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) == 0) continue;
 
-//		if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4) ||
-//					freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))])
-		if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4))
+		if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4) ||
+					opt_vemore && (freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))]))
 			vars.push_back(i);
 	}
 }
@@ -525,7 +552,7 @@ void Preprocessor::pickDefVars(vector<Var>& vars)
 			if(min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) == 0) continue;
 
 			if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4) ||
-						freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))]) {
+						opt_vemore && (freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))])) {
 				if(ins.weighted && ins.lit_weights[toInt(mkLit(i))]!=ins.lit_weights[toInt(~mkLit(i))])
 					continue;
 

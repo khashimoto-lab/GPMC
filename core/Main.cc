@@ -152,10 +152,6 @@ int main(int argc, char** argv)
 		IntOption opt_mode("GPMC -- MAIN", "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 3=wpmc).", 0, IntRange(0, 3));
 		IntOption opt_precision ("GPMC -- MAIN", "prec", "Precision of output of weighted model counting", 15, IntRange(15,INT32_MAX));
 
-		IntOption opt_varlimit("GPMC -- PP", "varlim", "limit on #Vars in Preprocessing.", 150000, IntRange(0, INT32_MAX));
-		DoubleOption opt_pptimelimit("GPMC -- PP", "pptimelim", "Time shreshold for deciding if it performs the last step of preprocessing.", 120, DoubleRange(0, true, DBL_MAX, true));
-		IntOption opt_ppverb("GPMC -- PP", "ppverb", "Preprocessing verbosity level (0=some, 1=more).", 0, IntRange(0, 1));
-
 		BoolOption opt_td("GPMC -- MAIN", "td", "Tree Decomposition", true);
 		IntOption  opt_td_varlim("GPMC -- MAIN", "tdvarlim", "Limit on #Vars in Tree Decomposition", 150000, IntRange(0, INT32_MAX));
 		DoubleOption  opt_td_dlim("GPMC -- MAIN", "tddenlim", "Limit on density of graph in Tree Decomposition", 0.10, DoubleRange(0, true, 1, true));
@@ -170,7 +166,8 @@ int main(int argc, char** argv)
 		if(opt_precision > 15)
 			mpfr::mpreal::set_default_prec(mpfr::digits2bits(opt_precision));
 
-		PPMC::Preprocessor PP(false, opt_varlimit, opt_pptimelimit, opt_ppverb);
+		// PPMC::Preprocessor PP(false, opt_varlimit, opt_pptimelimit, opt_ppverb);
+		PPMC::Preprocessor PP;
 		PPMC::Instance::Mode mode = getMode(opt_mode);
 
 		if(verb) {
