@@ -23,7 +23,7 @@ public:
 	Glucose::lbool value (Glucose::Lit p) const;
 
 	// For Debug
-	void toDimacs();
+	void toDimacs(std::ostream& out);
 
 	// CNF formula
 	int vars;

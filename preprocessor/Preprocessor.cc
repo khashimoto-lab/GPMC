@@ -97,7 +97,6 @@ void Identifier::MergeEquivClasses(int c1, int c2)
 Preprocessor::Preprocessor() : 
 var_limit(opt_varlimit), 
 time_limit(opt_pptimelimit), 
-outputDimacs(false), 
 verbose(opt_ppverb)
 { }
 
@@ -153,9 +152,6 @@ bool Preprocessor::Simplify()
 	}
 	if(cpuTime() < time_limit)
 		SAT_FLE();
-
-//	if(SAT_FLE() && ins.vars > 0 && outputDimacs)
-//		ins.toDimacs();
 
 	printCNFInfo("Simp");
 
@@ -437,6 +433,8 @@ bool Preprocessor::VariableEliminate()
 		Subsume();
 
 		times++;
+		if(times % 1000 == 0)
+			printCNFInfo("VE");
 		if(ins.clauses.size() > origclssz) break;
 	}
 

@@ -69,7 +69,6 @@ private:
 
 	int var_limit;				// if #vars is over var_limit, it does not try EquivEl/VE/DefVE.
 	double time_limit;			// if it does not reach the last step (SAT_FLE) withn timelimit, the last step is skipped.
-	bool outputDimacs;
 
 	int verbose;
 };

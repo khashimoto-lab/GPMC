@@ -152,6 +152,7 @@ int main(int argc, char** argv)
 		IntOption opt_mode("GPMC -- MAIN", "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 3=wpmc).", 0, IntRange(0, 3));
 		IntOption opt_precision ("GPMC -- MAIN", "prec", "Precision of output of weighted model counting", 15, IntRange(15,INT32_MAX));
 
+		StringOption opt_ppout("GPMC -- MAIN", "ppout", "Outfile for Simplified CNF", "NULL");
 		BoolOption opt_td("GPMC -- MAIN", "td", "Tree Decomposition", true);
 		IntOption  opt_td_varlim("GPMC -- MAIN", "tdvarlim", "Limit on #Vars in Tree Decomposition", 150000, IntRange(0, INT32_MAX));
 		DoubleOption  opt_td_dlim("GPMC -- MAIN", "tddenlim", "Limit on density of graph in Tree Decomposition", 0.10, DoubleRange(0, true, 1, true));
@@ -227,6 +228,13 @@ int main(int argc, char** argv)
 		printf("c o Simplification finished.\n");
 		printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
 		fflush(stdout);
+
+		if(strcmp(opt_ppout, "NULL") != 0 && PP.ins.vars > 0) {
+			ofstream out(opt_ppout);
+			printf("c o outputing simplified CNF...");
+			PP.ins.toDimacs(out);
+			printf("done\n");
+		}
 
 		std::vector<int> dists;
 		if(opt_td && !PP.ins.unsat && PP.ins.npvars > 0 && PP.ins.vars > 20) {

@@ -103,6 +103,11 @@ void Instance::load(istream& in, Mode mode) {
 						}
 					}
 				}
+				else if(tokens[2] == "gweight") {
+					if(weighted && tokens.size() == 5 && tokens.back() == "0") {
+						gweight = tokens[3];
+					}
+				}
 			}
 			else if(tokens[0] == "cr") {
 				if(projected && tokens.back() == "0") {
@@ -182,43 +187,48 @@ void Instance::reflectMode(Mode mode) {
 }
 
 // For Debug
- void Instance::toDimacs()
+ void Instance::toDimacs(std::ostream& out)
  {
 	using namespace std;
 
-	cout << "p cnf " << vars << " " << clauses.size() << endl;
+	out << "c free vars: " << freevars << endl;
+	out << "p cnf " << vars + freevars << " " << clauses.size() << endl;
 
 	if(mode == Instance::MC)
-		cout << "c t mc" << endl;
+		out << "c t mc" << endl;
 	else if(mode == Instance::WMC)
-		cout << "c t wmc" << endl;
+		out << "c t wmc" << endl;
 	else if(mode == Instance::PMC)
-		cout << "c t pmc" << endl;
+		out << "c t pmc" << endl;
 	else if(mode == Instance::WPMC)
-		cout << "c t wpmc" << endl;
+		out << "c t wpmc" << endl;
 
 	if(projected) {
-		cout << "c p show ";
+		out << "c p show ";
 		for (int i=0; i<npvars; i++)
-			cout << (i+1) << " ";
-		cout << "0" << endl;
+			out << (i+1) << " ";
+		out << "0" << endl;
 	}
 	if(weighted) {
-		cout.precision(10);
+		// out.precision(10);
 		for (int i=0; i<npvars; i++) {
-			cout << "c p weight " << (i+1) << " " << lit_weights[toInt(mkLit(i))] << " 0" << endl;
-			cout << "c p weight -" << (i+1) << " " << lit_weights[toInt(~mkLit(i))] << " 0" << endl;
+			out << "c p weight " << (i+1) << " " << lit_weights[toInt(mkLit(i))] << " 0" << endl;
+			out << "c p weight -" << (i+1) << " " << lit_weights[toInt(~mkLit(i))] << " 0" << endl;
+		}
+
+		if(gweight != 1) {
+			out << "c p gweight " << gweight << " 0" << endl;
 		}
 	}
 
 	for(auto c : clauses) {
 		for (auto l : c)
-			cout << (sign(l) ? "-":"") << (var(l)+1) << " ";
-		cout << "0" << endl;
+			out << (sign(l) ? "-":"") << (var(l)+1) << " ";
+		out << "0" << endl;
 	}
 	for(auto c : learnts) {
 		for (auto l : c)
-			cout << (sign(l) ? "-":"") << (var(l)+1) << " ";
-		cout << "0" << endl;
+			out << (sign(l) ? "-":"") << (var(l)+1) << " ";
+		out << "0" << endl;
 	}
 }
