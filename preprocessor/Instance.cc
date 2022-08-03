@@ -210,7 +210,9 @@ void Instance::reflectMode(Mode mode) {
 		out << "0" << endl;
 	}
 	if(weighted) {
-		// out.precision(10);
+		int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
+		out.precision(precision);
+
 		for (int i=0; i<npvars; i++) {
 			out << "c p weight " << (i+1) << " " << lit_weights[toInt(mkLit(i))] << " 0" << endl;
 			out << "c p weight -" << (i+1) << " " << lit_weights[toInt(~mkLit(i))] << " 0" << endl;
@@ -226,9 +228,13 @@ void Instance::reflectMode(Mode mode) {
 			out << (sign(l) ? "-":"") << (var(l)+1) << " ";
 		out << "0" << endl;
 	}
+
+	// For Debug
+	/*
 	for(auto c : learnts) {
 		for (auto l : c)
 			out << (sign(l) ? "-":"") << (var(l)+1) << " ";
 		out << "0" << endl;
 	}
+	*/
 }
