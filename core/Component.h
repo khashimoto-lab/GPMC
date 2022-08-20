@@ -3,6 +3,7 @@
 
 #include "mtl/Alloc.h"
 #include "core/SolverTypes.h"
+#include "core/Config.h"
 
 #include <gmpxx.h>
 #include "mpfr/mpreal.h"
@@ -92,25 +93,12 @@ public:
 		return !hasmodel_[cur_branch_];
 	}
 
-	void increaseModels(const mpz_class &nmodels, bool found = true) {
+	void increaseModels(const T_data &nmodels, bool found = true) {
 		if(found) {
 			if(hasmodel_[cur_branch_])
 				models_[cur_branch_] *= nmodels;
 			else
 				models_[cur_branch_] = nmodels;
-
-		} else {
-			models_[cur_branch_] = 0;
-		}
-		hasmodel_[cur_branch_] = found;
-	}
-
-	void increaseModels(const mpfr::mpreal &nmodels, bool found = true) {
-		if(found) {
-			if(hasmodel_[cur_branch_])
-				models_[cur_branch_] *= nmodels;
-			else
-				models_[cur_branch_] = branch_weight_ * nmodels;
 		} else {
 			models_[cur_branch_] = 0;
 		}
@@ -123,6 +111,10 @@ public:
 	void mulBranchWeight(const T_data &w) {
 		// cout << w << endl;
 		branch_weight_ *= w;
+	}
+	void mulLitsWeights() {
+		if(hasmodel_[cur_branch_])
+			models_[cur_branch_] *= branch_weight_;
 	}
 
 	vector<unsigned> dec_cands;
@@ -405,7 +397,7 @@ class ComponentCache {
 	unsigned long my_time_ = 0;
 
 public:
-	void init();
+	void init(int cachesize);
 
 	void add_descendant(CacheEntryID compid, CacheEntryID descendantid) {
 		assert(descendantid != entry(compid).first_descendant());
@@ -556,13 +548,13 @@ class ComponentManager {
 
 	ComponentCache<T_data> cache_;
 
-	bool weighted_;
+	ConfigComponentManager config;
 
 	int fixed_level_;
 
 public:
 	ComponentManager() :
-		npvars_(0), components(0), num_try_split(0), weighted_(false), fixed_level_(0) {
+		npvars_(0), components(0), num_try_split(0), fixed_level_(0) {
 	}
 
 	~ComponentManager()
@@ -573,7 +565,8 @@ public:
 		}
 	}
 
-	void init(bool weighted, int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca);
+	void setConfig(ConfigComponentManager cfg) { this->config = cfg; }
+	void init(int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca);
 
 	int splitComponent(const vec<lbool>& assigns, const vec<T_data>& lit_weight = {});
 

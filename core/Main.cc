@@ -67,15 +67,17 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 #include <signal.h>
 #include <zlib.h>
+#include <gmpxx.h>
+#include <mpfr/mpreal.h>
 
 #include "utils/System.h"
 #include "utils/ParseUtils.h"
 #include "utils/Options.h"
 #include "core/Dimacs.h"
+#include "core/Config.h"
 #include "preprocessor/Preprocessor.h"
-// #include "core/Solver.h"
 #include "core/Counter.h"
-#include <mpfr/mpreal.h>
+
 
 using namespace Glucose;
 using namespace GPMC;
@@ -90,7 +92,10 @@ static void SIGINT_interrupt(int signum) {
 	printf("c o *** INTERRUPTED by signal %d ***\n", signum);
 	printf("c o Elapsed time %.2lf s\n", cpuTime());
 	fflush(stdout);
-	counter->interrupt();
+	if(counter != NULL)
+		counter->interrupt();
+	else
+		_exit(1);
 }
 
 // Note that '_exit()' rather than 'exit()' has to be used. The reason is that 'exit()' calls
@@ -103,30 +108,116 @@ static void SIGINT_exit(int signum) {
 	fflush(stdout);
 	_exit(1); }
 
-static void SetSigAct(Solver *s) {
-	counter = s;
+static void SetSigAct() {
 	signal(SIGINT,  SIGINT_interrupt);  //  2, SIGINT
 	signal(SIGABRT, SIGINT_exit);       //  6, SIGABRT
 	signal(SIGSEGV, SIGINT_exit);       // 11, SIGSEGV
 	signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
-	signal(SIGXCPU, SIGINT_interrupt);
+	signal(SIGXCPU, SIGINT_exit);
 }
 //=================================================================================================
-static PPMC::Instance::Mode getMode(int opt_mode)
-{
-	PPMC::Instance::Mode mode;
-	switch(opt_mode) {
-		case 0:	mode = PPMC::Instance::MC; 	break;
-		case 1:	mode = PPMC::Instance::WMC;	break;
-		case 2:	mode = PPMC::Instance::PMC; break;
-		case 3:	mode = PPMC::Instance::WPMC; break;
-		default:	mode = PPMC::Instance::MC; 	break;
+static mpfr::mpreal Log10(const mpz_class& num) {
+  assert(num >= 0);
+  if (num == 0) {
+    return -std::numeric_limits<double>::infinity();
+  }
+  mpfr::mpreal num1(num.get_mpz_t());
+  return mpfr::log10(num1);
+}
+static void PrintLog10(const mpz_class& num) {
+  cout<<"c s log10-estimate "<<Log10(num)<<endl;
+}
+static void PrintLog10(const mpfr::mpreal& num) {
+  cout<<"c s log10-estimate "<<mpfr::log10(num)<<endl;
+}
+static void printMode(Mode mode) {
+	switch(mode) {
+	case MC:	printf("c s type mc\n");break;
+	case WMC:	printf("c s type wmc\n");break;
+	case PMC:	printf("c s type pmc\n");break;
+	case WPMC:	printf("c s type wpmc\n");break;
 	}
-	return mode;
+}
+static void printResult(bool sat, Mode mode, const mpz_class& result) {
+	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
+	printMode(mode);
+	if(!sat) {
+		printf("c s exact arb int 0\n");
+		printf("c s log10-estimate -inf\n");
+	} else {
+		cout << "c s exact arb int " << result << endl;
+		cout.precision(15);
+		PrintLog10(result);
+	}
+}
+static void printResult(bool sat, Mode mode, const mpfr::mpreal& result) {
+	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
+	printMode(mode);
+	if(!sat) {
+		printf("c s exact arb int 0\n");
+		printf("c s log10-estimate -inf\n");
+	} else {
+		int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
+		cout.precision(precision);
+		if(precision > 15) {
+			cout << "c o precision " << precision << endl;
+			cout << "c s exact prec-sci " <<  result << endl;
+		} else {
+			cout << "c s exact double prec-sci " <<  result << endl;
+		}
+		cout.precision(15);
+		PrintLog10(result);
+	}
 }
 //=================================================================================================
 // Main:
+template <class T_data>
+void main_mc(Counter<T_data>& S, string filename)
+{
+	// Loading input
+	if (filename.empty()) {
+		printf("c o Reading from standard input... Use '--help' for help.\n");
+		S.load(std::cin);
+	}
+	else {
+		cout << "c o Reading from the file " << filename << " ..." << endl;
+		std::ifstream in(filename);
+		if (in)
+			S.load(in);
+		else {
+			std::cerr << "Cannot open file:" << filename << std::endl;
+			exit(1);
+		}
+	}
+	printf("c o Reading finished.\n");
+	printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+	fflush(stdout);
 
+	// Simplifying
+	printf("c o Simplification starts...\n");
+	bool done = S.preprocess();
+	printf("c o Simplification finished.\n");
+	printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+	fflush(stdout);
+
+	if(done) {
+		printf("c o Solved by simplification.\n");
+		printf("c o [Result]\n");
+		printResult(S.sat, S.config.mode, S.getMC());
+		return;
+	}
+
+	// Counting
+	counter = (Solver*)&S;
+	bool suc = S.countModels();
+	S.printStats();
+	printf("c o [Result]\n");
+	if(suc)
+		printResult(S.sat, S.config.mode, S.getMC());
+	else
+		printf("s UNKNOWN\n");
+	fflush(stdout);
+}
 
 int main(int argc, char** argv)
 {
@@ -149,44 +240,24 @@ int main(int argc, char** argv)
 		IntOption    cpu_lim("MAIN", "cpu-lim","Limit on CPU time allowed in seconds.\n", INT32_MAX, IntRange(0, INT32_MAX));
 		IntOption    mem_lim("MAIN", "mem-lim","Limit on memory usage in megabytes.\n", INT32_MAX, IntRange(0, INT32_MAX));
 
-		IntOption opt_mode("GPMC -- MAIN", "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 3=wpmc).", 0, IntRange(0, 3));
-		IntOption opt_precision ("GPMC -- MAIN", "prec", "Precision of output of weighted model counting", 15, IntRange(15,INT32_MAX));
-
-		StringOption opt_ppout("GPMC -- MAIN", "ppout", "Outfile for Simplified CNF", "NULL");
-		BoolOption opt_td("GPMC -- MAIN", "td", "Tree Decomposition", true);
-		IntOption  opt_td_varlim("GPMC -- MAIN", "tdvarlim", "Limit on #Vars in Tree Decomposition", 150000, IntRange(0, INT32_MAX));
-		DoubleOption  opt_td_dlim("GPMC -- MAIN", "tddenlim", "Limit on density of graph in Tree Decomposition", 0.10, DoubleRange(0, true, 1, true));
-		DoubleOption  opt_td_rlim("GPMC -- MAIN", "tdratiolim", "Limit on ratio (edges/vars) of graph in Tree Decomposition", 30.0, DoubleRange(0, true, 1000, true));
-		DoubleOption  opt_td_twvar("GPMC -- MAIN", "twvarlim", "Limit on tw/vars", 0.25, DoubleRange(0, true, 1, true));
-		DoubleOption opt_td_to("GPMC -- MAIN", "tdtime", "Time Limit on Tree Decomposition", 0, DoubleRange(0, true, INT32_MAX, true));
-		DoubleOption opt_coef("GPMC -- MAIN", "coef", "TDscore coefficient", 100, DoubleRange(0, true, 10000000, true));
-		StringOption opt_tdout("GPMC -- MAIN", "tdout", "Outfile for Tree Decomposition", "NULL");
-
 		parseOptions(argc, argv, true);
-
-		if(opt_precision > 15)
-			mpfr::mpreal::set_default_prec(mpfr::digits2bits(opt_precision));
-
-		// PPMC::Preprocessor PP(false, opt_varlimit, opt_pptimelimit, opt_ppverb);
-		PPMC::Preprocessor PP;
-		PPMC::Instance::Mode mode = getMode(opt_mode);
+		Configuration config;
+		string filename = (argc == 1) ? "" : argv[1];
 
 		if(verb) {
 			printf("c o "GPMC_VERSION"\n");
-			switch(mode) {
-			  case PPMC::Instance::MC:		printf("c o Mode: Model Counting\n"); break;
-			  case PPMC::Instance::WMC:		printf("c o Mode: Weighted Model Counting\n"); break;
-			  case PPMC::Instance::PMC:		printf("c o Mode: Projected Model Counting\n"); break;
-			  case PPMC::Instance::WPMC:	printf("c o Mode: Weighted Projected Model Counting\n"); break;
+			switch(config.cntr.mode) {
+			  case MC:		printf("c o Mode: Model Counting\n"); break;
+			  case WMC:	printf("c o Mode: Weighted Model Counting\n"); break;
+			  case PMC:	printf("c o Mode: Projected Model Counting\n"); break;
+			  case WPMC:	printf("c o Mode: Weighted Projected Model Counting\n"); break;
 			}
 			fflush(stdout);
 		}
 
 		// Use signal handlers that forcibly quit until the solver will be able to respond to
 		// interrupts:
-		signal(SIGINT, SIGINT_exit);
-		signal(SIGTERM, SIGINT_exit);  // 15, SIGTERM
-		//  signal(SIGXCPU,SIGINT_exit);
+		SetSigAct();
 
 		// Set limit on CPU-time:
 		if (cpu_lim != INT32_MAX){
@@ -209,72 +280,18 @@ int main(int argc, char** argv)
 					printf("c o WARNING! Could not set resource limit: Virtual memory.\n");
 			} }
 
-		// Loading input
-		if (argc == 1) {
-			printf("c o Reading from standard input... Use '--help' for help.\n");
-			PP.loadFromStdin(mode);
-		}
-		else {
-			printf("c o Reading from the file %s...\n", argv[1]);
-			PP.loadFromFile(argv[1], mode);
-		}
-		printf("c o Reading finished.\n");
-		printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
-		fflush(stdout);
-
-		// Simplifying
-		printf("c o Simplification starts...\n");
-		PP.Simplify();		// Simplify includes SAT solving.
-		printf("c o Simplification finished.\n");
-		printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
-		fflush(stdout);
-
-		if(strcmp(opt_ppout, "NULL") != 0 && PP.ins.vars > 0) {
-			ofstream out(opt_ppout);
-			printf("c o outputing simplified CNF...");
-			PP.ins.toDimacs(out);
-			printf("done\n");
-		}
-
-		std::vector<int> dists;
-		if(opt_td && !PP.ins.unsat && PP.ins.npvars > 0 && PP.ins.vars > 20) {
-			printf("c o Tree Decomposition starts... \n");
-			TreeDecomposition td = PP.getTD(opt_td_varlim, opt_td_dlim, opt_td_rlim, opt_td_to);
-			if(td.numNodes() > 0) {
-				int centroid = td.centroid(PP.ins.npvars);
-				if(strcmp(opt_tdout, "NULL") != 0) {
-					ofstream out(opt_tdout);
-					td.toDimacs(out, centroid+1, PP.ins.npvars);
-				}
-				if((double)td.width()/PP.ins.npvars < opt_td_twvar)
-					dists = td.distanceFromCentroid(PP.ins.npvars);
-				else
-					printf("c o ignore td\n");
-			}
-			printf("c o Tree Decomposition finished.\n");
-			printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
-		}
-		fflush(stdout);
-
-		// Counting
-		printf("c o GPMC Counting starts... \n");
-		if(mode == PPMC::Instance::MC || mode == PPMC::Instance::PMC) {
-			// non-weighted
-			Counter<mpz_class> S;
-			SetSigAct((Solver *)&S);
-			S.import(PP.ins);
-			S.computeTDScore(dists, opt_coef);
-			S.countModels();
-			S.printStats();
+		if(config.cntr.mode == MC || config.cntr.mode == PMC || config.cntr.natw) {
+			Counter<mpz_class> S(config);
+			main_mc(S, filename);
 		} else {
-			// weighted
-			Counter<mpfr::mpreal> S;
-			SetSigAct((Solver *)&S);
-			S.import(PP.ins);
-			S.computeTDScore(dists);
-			S.countModels();
-			S.printStats();
+			if(config.cntr.precision > 15)
+				mpfr::mpreal::set_default_prec(mpfr::digits2bits(config.cntr.precision));
+
+			Counter<mpfr::mpreal> S(config);
+			main_mc(S, filename);
 		}
+
+		printf("c o \n");
 		printf("c o GPMC Counting finished.\nc o\n");
 		printf("c o CPU time    = %.2lf s\n", cpuTime());
 		printf("c o Real time   = %.2lf s\n", realTime()-start);

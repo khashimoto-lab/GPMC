@@ -1,16 +1,13 @@
 #include "core/Component.h"
 #include "mtl/Sort.h"
-#include "utils/Options.h"
 #include <utility>
 
 using namespace GPMC;
 
 #define CACHE
 
-static IntOption  opt_vs ("ComponetManager", "vs", "Varable Selection Heuristics", 1, IntRange(0,1));
-
 template <typename T_data>
-void ComponentManager<T_data>::init(bool weighted, int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca){
+void ComponentManager<T_data>::init(int nvars, int npvars, const vec<CRef>& sclauses, const ClauseAllocator& sca){
 	vec< vec<Var> > binlinks(nvars);
 	vec< vec<ClID> > occ(nvars);
 
@@ -59,14 +56,13 @@ void ComponentManager<T_data>::init(bool weighted, int nvars, int npvars, const 
 	npvars_ = npvars;
 
 #ifdef CACHE
-	cache_.init();
+	cache_.init(config.cachesize);
 	CachedComponent<T_data>::adjustPackSize(nvars, clauses_.size());
 #endif
 
 	initComponentStack(nvars, clauses_.size());
 	initDecisionStack();
 
-	weighted_ = weighted;
 	components = 1;
 	num_try_split = 0;
 }
@@ -124,7 +120,7 @@ int ComponentManager<T_data>::splitComponent(const vec<lbool>& assigns, const ve
 			searchComponent(v, assigns, nvars_in_comp, ncls_in_comp);
 			if (nvars_in_comp == 1) {
 				if(isPVar(v)){
-					if(weighted_)
+					if(config.weighted)
 						dl_.back().increaseModels(lit_weight[toInt(mkLit(v, true))]+lit_weight[toInt(mkLit(v, false))], true);
 					else
 						dl_.back().increaseModels((T_data)2, true);
@@ -268,7 +264,7 @@ Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const v
 	double max_score_a = -1;
 	double max_score_f = -1;
 
-	if(opt_vs == 0) {
+	if(config.varSelectionHueristics == 0) {
 		int p;
 		for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
 			double score_f = var_frequency_[c[p]] + tdscore[c[p]];

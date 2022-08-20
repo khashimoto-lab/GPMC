@@ -7,17 +7,15 @@
 #include <gmpxx.h>
 #include "mpfr/mpreal.h"
 
-namespace PPMC {
+namespace GPMC {
 
+template <class T_data>
 class Instance {
 public:
-	enum Mode { MC, WMC, PMC, WPMC };
-
 	Instance();
 
-	void load			(std::istream& in, Mode mode=MC);
+	void load			(std::istream& in, bool weighted, bool projected);
 	bool addClause	(std::vector<Glucose::Lit>& lits, bool learnt=false);
-	void reflectMode	(Mode mode);
 
 	Glucose::lbool value (Glucose::Var x) const;
 	Glucose::lbool value (Glucose::Lit p) const;
@@ -31,12 +29,11 @@ public:
 	std::vector<std::vector<Glucose::Lit>> learnts;
 
 	// Counter Mode
-	Mode mode;
 	bool weighted;
 	bool projected;
 
 	// For WMC/WPMC
-	std::vector<mpfr::mpreal> lit_weights;
+	std::vector<T_data> lit_weights;
 
 	// For PMC/WPMC
 	int npvars;
@@ -48,16 +45,17 @@ public:
 
 	// additional information
 	int freevars;
-	mpfr::mpreal gweight;
+	T_data gweight;
 
 	// State
-	bool isSteady;		// true when no fixed literals, no free variables, all clauses are sorted.
 	bool unsat;
 
 };
 
-inline Glucose::lbool Instance::value (Glucose::Var x) const { return assigns[x]; }
-inline Glucose::lbool Instance::value (Glucose::Lit p) const { return assigns[var(p)] ^ sign(p); }
+template <class T_data>
+inline Glucose::lbool Instance<T_data>::value (Glucose::Var x) const { return assigns[x]; }
+template <class T_data>
+inline Glucose::lbool Instance<T_data>::value (Glucose::Lit p) const { return assigns[var(p)] ^ sign(p); }
 
 }
 

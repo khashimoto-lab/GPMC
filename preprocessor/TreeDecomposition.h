@@ -12,10 +12,13 @@
 #include <algorithm>
 
 #include "lib_sharpsat_td/bitset.hpp"
+#include "core/SolverTypes.h"
 
 class Graph {
 public:
 	Graph() : nodes(0), edges(0) { }
+	Graph(int vars, const std::vector<std::vector<Glucose::Lit>>& clauses);
+	Graph(int vars, const std::vector<std::vector<Glucose::Lit>>& clauses, const std::vector<std::vector<Glucose::Lit>>& learnts, std::vector<int>& freq);
 
 	void init(int n);
 	void clear();

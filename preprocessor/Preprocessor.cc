@@ -3,28 +3,11 @@
 #include "lib_sharpsat_td/subsumer.hpp"
 #include "TestSolver.h"
 
-#include "utils/Options.h"
-
 using std::swap;
 
 using namespace PPMC;
 using namespace Glucose;
 using namespace std;
-
-// Options:
-static const char* _pp = "GPMC -- PP";
-static IntOption 	opt_varlimit	(_pp, "varlim", "limit on #Vars in Preprocessing.", 200000, IntRange(0, INT32_MAX));
-static DoubleOption opt_pptimelimit	(_pp, "pptimelim", "Time shreshold of preprocessing (not precise).", 120, DoubleRange(0, true, DBL_MAX, true));
-static IntOption	opt_pprep		(_pp, "ppreps",	"#reps of the main loop of preprocessing.", 20, IntRange(1, INT32_MAX));
-static IntOption 	opt_ppverb		(_pp, "ppverb", "Preprocessing verbosity level (0=some, 1=more).", 0, IntRange(0, 1));
-static BoolOption	opt_ee			(_pp, "pp_ee", "Use equivalent literal elimination.", true);
-static IntOption	opt_ee_varlim	(_pp, "ee-varlim", "limit on #Vars in equivalent literal elimination.", 150000, IntRange(0, INT32_MAX));
-static BoolOption	opt_ve			(_pp, "pp_ve", "Use variable elimination.", true);
-static IntOption	opt_vereps		(_pp, "ve_reps", "VE: the number of repetitions", 400, IntRange(0, INT32_MAX));
-static IntOption	opt_dvereps		(_pp, "dve_reps", "DefVE: the number of repetitions", 10, IntRange(0, INT32_MAX));
-static BoolOption	opt_vemore		(_pp, "ve_more", "VE: target more variables", true);
-static BoolOption	opt_cs			(_pp, "pp_cs", "Clause Strengthening", true);
-//
 
 // Identifier
 void Identifier::identify(Lit l1, Lit l2)
@@ -94,73 +77,62 @@ void Identifier::MergeEquivClasses(int c1, int c2)
 }
 
 // Preprocessor
-Preprocessor::Preprocessor() : 
-var_limit(opt_varlimit), 
-time_limit(opt_pptimelimit), 
-verbose(opt_ppverb)
-{ }
-
-void Preprocessor::loadFromFile(string filename, Instance::Mode mode)
+template <class T_data>
+bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
 {
-	std::ifstream in(filename);
-	if (in)
-		ins.load(in, mode);
-	else {
-		std::cerr << "Cannot open file:" << filename << std::endl;
-		exit(1);
-	}
-}
+	ins = instance;
 
-bool Preprocessor::Simplify()
-{
 	printCNFInfo("Init", true);
 
-	if(ins.unsat || !SAT_FLE())
+	if(ins->unsat || !SAT_FLE())
 		return false;
 
-	if(ins.vars > var_limit)
+	if(ins->vars > config.varlimit)
 		return true;
 
-	if(opt_cs)
+	if(config.cs)
 		Strengthen();
 
-	int start_cls = ins.clauses.size();
+	int start_cls = ins->clauses.size();
 
-	for(int i=0; i<opt_pprep; i++) {
-		int vars = ins.vars;
-		int cls = ins.clauses.size();
+	for(int i=0; i<config.reps; i++) {
+		int vars = ins->vars;
+		int cls = ins->clauses.size();
 
-		if(cpuTime() > time_limit) break;
+		if(cpuTime() > config.timelim) break;
 
-		if(opt_ee && ins.vars < opt_ee_varlim)
+		if(config.ee && ins->vars < config.ee_varlim)
 			MergeAdjEquivs();
-		if(opt_ve) {
-			VariableEliminate();
-			DefVariableEliminate();
+		if(config.ve) {
+			if(ins->projected) VariableEliminate(false);
+			VariableEliminate(true);
 		}
-		if(opt_cs)
+		if(config.cs)
 			Strengthen();
 
-		if(cpuTime() > time_limit || ((vars == ins.vars) && (cls == ins.clauses.size())) || (ins.clauses.size() > (double) 1.1 * start_cls))
+		if(cpuTime() > config.timelim || ((vars == ins->vars) && (cls == ins->clauses.size())) || (ins->clauses.size() > (double) 1.1 * start_cls))
 			break;
 	}
 
-	for(int i=ins.learnts.size()-1; i>=0; i--) {
-		vector<Lit>& clause = ins.learnts[i];
+	for(int i=ins->learnts.size()-1; i>=0; i--) {
+		vector<Lit>& clause = ins->learnts[i];
 		if(clause.size() > 3)
-			sspp::SwapDel(ins.learnts, i);
+			sspp::SwapDel(ins->learnts, i);
 	}
-	if(cpuTime() < time_limit)
+	if(cpuTime() < config.timelim)
 		SAT_FLE();
 
 	printCNFInfo("Simp");
 
+	ins = NULL;
+
 	return true;
 }
 
-bool Preprocessor::SAT_FLE()
+template <class T_data>
+bool Preprocessor<T_data>::SAT_FLE()
 {
-	TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
+	TestSolver S(ins->vars, ins->clauses, ins->learnts, ins->assignedLits);
 
 	if(!S.okay())
 		return false;
@@ -169,37 +141,38 @@ bool Preprocessor::SAT_FLE()
 		return false;
 
 	if(S.Solve() == l_False) {
-		ins.unsat = true;
+		ins->unsat = true;
 		return false;
 	}
 
-	S.exportLearnts(ins.learnts);
+	S.exportLearnts(ins->learnts);
 	Compact(S.getAssigns());
-	sspp::SortAndDedup(ins.clauses);
-	sspp::SortAndDedup(ins.learnts);
+	sspp::SortAndDedup(ins->clauses);
+	sspp::SortAndDedup(ins->learnts);
 	Subsume();
 
-	if(verbose >= 1)
+	if(config.verb >= 1)
 		printCNFInfo("SAT_FLE");
 
 	return true;
 }
 
-bool Preprocessor::Strengthen()
+template <class T_data>
+bool Preprocessor<T_data>::Strengthen()
 {
-	TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
+	TestSolver S(ins->vars, ins->clauses, ins->learnts, ins->assignedLits);
 	bool removecl = false;
 	bool removelit = false;
 
-	for(int i=ins.clauses.size()-1; i>=0; i--) {
+	for(int i=ins->clauses.size()-1; i>=0; i--) {
 		vec<Lit> assump;
 
-		for(int j=ins.clauses[i].size()-1; j>=0; j--) {
+		for(int j=ins->clauses[i].size()-1; j>=0; j--) {
 			assump.clear();
 			removelit = false;
 
-			for(int k=0; k<ins.clauses[i].size(); k++) {
-				Lit l = ins.clauses[i][k];
+			for(int k=0; k<ins->clauses[i].size(); k++) {
+				Lit l = ins->clauses[i][k];
 				if(S.value(l) == l_True) {
 					removecl = true;
 					break;
@@ -216,12 +189,12 @@ bool Preprocessor::Strengthen()
 			if(removecl) break;
 
 			if(removelit || S.falsifiedBy(assump)) {
-				for(int k=j+1; k<ins.clauses[i].size(); k++)
-					ins.clauses[i][k-1] = ins.clauses[i][k];
-				ins.clauses[i].pop_back();
+				for(int k=j+1; k<ins->clauses[i].size(); k++)
+					ins->clauses[i][k-1] = ins->clauses[i][k];
+				ins->clauses[i].pop_back();
 
-				if(ins.clauses[i].size() == 1) {
-					S.assign(ins.clauses[i][0]);
+				if(ins->clauses[i].size() == 1) {
+					S.assign(ins->clauses[i][0]);
 					S.bcp(); // no conflict because SAT test was already passed.
 					removecl = true;
 					break;
@@ -229,37 +202,38 @@ bool Preprocessor::Strengthen()
 			}
 		}
 		if(removecl) {
-			sspp::SwapDel(ins.clauses, i);
+			sspp::SwapDel(ins->clauses, i);
 			removecl = false;
 		}
 	}
 
-	S.exportLearnts(ins.learnts);
+	S.exportLearnts(ins->learnts);
 	Compact(S.getAssigns());
-	sspp::SortAndDedup(ins.clauses);
-	sspp::SortAndDedup(ins.learnts);
+	sspp::SortAndDedup(ins->clauses);
+	sspp::SortAndDedup(ins->learnts);
 	Subsume();
 
-	if(verbose >= 1)
+	if(config.verb >= 1)
 		printCNFInfo("ClStrg");
 
 	return true;
 }
 
-bool Preprocessor::MergeAdjEquivs()
+template <class T_data>
+bool Preprocessor<T_data>::MergeAdjEquivs()
 {
 	// This merges equivalent adjacent literals.
 	// The equivalence check is lazy, using unit propagation not Sat solving.
 
-	Identifier Id(ins.vars);
+	Identifier Id(ins->vars);
 
 	{
 		vector<sspp::Bitset> adjmat;
-		adjmat.resize(ins.vars);
-		for(int i=0; i<ins.vars; i++)
-			adjmat[i] = sspp::Bitset(ins.vars);
+		adjmat.resize(ins->vars);
+		for(int i=0; i<ins->vars; i++)
+			adjmat[i] = sspp::Bitset(ins->vars);
 
-		for (const auto& cls : {ins.clauses, ins.learnts}) {
+		for (const auto& cls : {ins->clauses, ins->learnts}) {
 			for (const auto& clause : cls)
 				for (int i=0; i<clause.size(); i++)
 					for(int j=i+1; j<clause.size(); j++) {
@@ -276,11 +250,11 @@ bool Preprocessor::MergeAdjEquivs()
 		// assert: any projected var idx < any non-projceted var idx
 		//
 
-		TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
+		TestSolver S(ins->vars, ins->clauses, ins->learnts, ins->assignedLits);
 		Glucose::vec<Glucose::Lit>& trail = S.getTrail();
 
-		for (Var v1 = 0; v1 < ins.vars; v1++) {
-			for (Var v2 = v1+1; v2 < ins.vars; v2++) {
+		for (Var v1 = 0; v1 < ins->vars; v1++) {
+			for (Var v2 = v1+1; v2 < ins->vars; v2++) {
 				if (!adjmat[v1].Get(v2)) continue;
 
 				Lit l1 = mkLit(v1);
@@ -321,7 +295,7 @@ bool Preprocessor::MergeAdjEquivs()
 						cpos = trail.size();
 					}
 					for(int i=pos; i<trail.size(); i++)
-						ins.assignedLits.push_back(trail[i]);
+						ins->assignedLits.push_back(trail[i]);
 				}
 			}
 		}
@@ -329,9 +303,9 @@ bool Preprocessor::MergeAdjEquivs()
 
 	bool subsump = false;
 	if (Id.hasEquiv()) {
-		vector<Lit> map(2*ins.vars);
+		vector<Lit> map(2*ins->vars);
 		int new_id = 0;
-		for(int i=0; i<ins.vars; i++) {
+		for(int i=0; i<ins->vars; i++) {
 			Lit dl = Id.delegateLit(mkLit(i));
 			Lit l = mkLit(i);
 
@@ -339,89 +313,89 @@ bool Preprocessor::MergeAdjEquivs()
 				Lit newlit = mkLit(new_id);
 				map[toInt(l)]  = newlit;
 				map[toInt(~l)] = ~newlit;
-				if(ins.weighted && i < ins.npvars) {
-					ins.lit_weights[toInt(newlit)]  = ins.lit_weights[toInt(l)];
-					ins.lit_weights[toInt(~newlit)] = ins.lit_weights[toInt(~l)];
+				if(ins->weighted && i < ins->npvars) {
+					ins->lit_weights[toInt(newlit)]  = ins->lit_weights[toInt(l)];
+					ins->lit_weights[toInt(~newlit)] = ins->lit_weights[toInt(~l)];
 				}
 				new_id++;
 			} else {
 				Lit newlit = map[toInt(dl)];
 				map[toInt(l)]  = newlit;
 				map[toInt(~l)] = ~newlit;
-				if(ins.weighted && i < ins.npvars) {
-					ins.lit_weights[toInt(newlit)]  *= ins.lit_weights[toInt(l)];
-					ins.lit_weights[toInt(~newlit)] *= ins.lit_weights[toInt(~l)];
+				if(ins->weighted && i < ins->npvars) {
+					ins->lit_weights[toInt(newlit)]  *= ins->lit_weights[toInt(l)];
+					ins->lit_weights[toInt(~newlit)] *= ins->lit_weights[toInt(~l)];
 				}
 			}
-			if(i == ins.npvars-1)
-				ins.npvars = new_id;
+			if(i == ins->npvars-1)
+				ins->npvars = new_id;
 		}
-		ins.vars = new_id;
-		ins.ispvars.clear();
-		ins.ispvars.resize(ins.npvars, true);
-		ins.ispvars.resize(ins.vars, false);
+		ins->vars = new_id;
+		ins->ispvars.clear();
+		ins->ispvars.resize(ins->npvars, true);
+		ins->ispvars.resize(ins->vars, false);
 
-		if(ins.assignedLits.size() > 0) {
+		if(ins->assignedLits.size() > 0) {
 			vector<Lit> assignedLits_new;
-			for(Lit l : ins.assignedLits)
+			for(Lit l : ins->assignedLits)
 				assignedLits_new.push_back(map[toInt(l)]);
-			ins.assignedLits = assignedLits_new;
+			ins->assignedLits = assignedLits_new;
 		}
 
-		RewriteClauses(ins.clauses, map);
-		RewriteClauses(ins.learnts, map);
+		RewriteClauses(ins->clauses, map);
+		RewriteClauses(ins->learnts, map);
 
 		subsump = true;
 	}
 
-	if(ins.assignedLits.size() > 0) {
-		sspp::SortAndDedup(ins.assignedLits);
+	if(ins->assignedLits.size() > 0) {
+		sspp::SortAndDedup(ins->assignedLits);
 
-		TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
+		TestSolver S(ins->vars, ins->clauses, ins->learnts, ins->assignedLits);
 		Compact(S.getAssigns());
-		sspp::SortAndDedup(ins.clauses);
-		sspp::SortAndDedup(ins.learnts);
+		sspp::SortAndDedup(ins->clauses);
+		sspp::SortAndDedup(ins->learnts);
 
 		subsump = true;
 	}
 
 	if(subsump) Subsume();
 
-	if(verbose >= 1)
+	if(config.verb >= 1)
 		printCNFInfo("EquivEl");
 	return true;
 }
 
-bool Preprocessor::VariableEliminate()
+template <class T_data>
+bool Preprocessor<T_data>::VariableEliminate(bool dve)
 {
-	if(!ins.projected)
-		return true;
-
 	vector<int> vars;
 
-	int origclssz = ins.clauses.size();
+	int origclssz = ins->clauses.size();
+	int reps = dve ? config.dve_reps : config.ve_reps;
 
 	int times = 0;
-	while(times < opt_vereps) {
+	while(times < reps) {
 		vars.clear();
-		pickVars(vars);
+		if(dve) pickDefVars(vars);
+		else pickVars(vars);
+
 		if(vars.size() == 0) break;
 
 		int lastidx = ElimVars(vars);
 
 		vec<lbool> cassign;
-		if(ins.assignedLits.size() > 0) {
-			sspp::SortAndDedup(ins.assignedLits);
-			TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
+		if(ins->assignedLits.size() > 0) {
+			sspp::SortAndDedup(ins->assignedLits);
+			TestSolver S(ins->vars, ins->clauses, ins->learnts, ins->assignedLits);
 			S.getAssigns().copyTo(cassign);
 		}
 		else {
-			cassign.growTo(ins.vars, l_Undef);
+			cassign.growTo(ins->vars, l_Undef);
 		}
 
 		// Here we abuse Compact, assuming that deleted vars was assigned.
 		// We can assume that the deleted vars are non-projected vars or the counting mode is not a weighted one.
-		assert(ins.projected);
 		assert(lastidx <= vars.size());
 		for(int i = 0; i < lastidx; i++) {
 			Var v = vars[i];
@@ -433,128 +407,64 @@ bool Preprocessor::VariableEliminate()
 		Subsume();
 
 		times++;
-		if(times % 1000 == 0)
-			printCNFInfo("VE");
-		if(ins.clauses.size() > origclssz) break;
+		if(times % 1000 == 0 && config.verb >= 1)
+			printCNFInfo("*VE");
+		if(ins->clauses.size() > origclssz) break;
 	}
 
-	if(verbose >= 1)
-		printCNFInfo("VE");
+	if(config.verb >= 1)
+		printCNFInfo(dve ? "DefVE" : "VE");
 
 	return true;
 }
 
-bool Preprocessor::DefVariableEliminate()
+template <class T_data>
+inline bool Preprocessor<T_data>::isVECandidate(Graph& G, vector<int>& freq, int i) const
 {
-	// if(ins.weighted) return true;
-
-	vector<int> vars;
-
-	int origclssz = ins.clauses.size();
-
-	int times = 0;
-	while(times < opt_dvereps) {
-		vars.clear();
-		pickDefVars(vars);
-		if(vars.size() == 0) break;
-
-		int lastidx = ElimVars(vars);
-
-		vec<lbool> cassign;
-		if(ins.assignedLits.size() > 0) {
-			sspp::SortAndDedup(ins.assignedLits);
-			TestSolver S(ins.vars, ins.clauses, ins.learnts, ins.assignedLits);
-			S.getAssigns().copyTo(cassign);
-		}
-		else {
-			cassign.growTo(ins.vars, l_Undef);
-		}
-
-
-		// Here we abuse Compact, assuming that deleted vars was assigned.
-		// We can assume that the deleted vars are non-projected vars or the counting mode is not a weighted one.
-		assert(!ins.weighted);
-		assert(lastidx <= vars.size());
-		for(int i = 0; i < lastidx; i++) {
-			Var v = vars[i];
-			if(cassign[v] == l_Undef)
-				cassign[v] = l_True;			// just want to treat v as not a free variable and eliminate...
-		}
-
-		Compact(cassign);
-		Subsume();
-
-		if(verbose >= 1)
-			printCNFInfo("DefVE");
-		times++;
-		if(ins.clauses.size() > origclssz) break;
-	}
-
-	return true;
+	return
+			(G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4) ||
+			(config.ve_more && (freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))]));
 }
 
-void Preprocessor::pickVars(vector<Var>& vars)
+template <class T_data>
+void Preprocessor<T_data>::pickVars(vector<Var>& vars)
 {
-	vector<int> freq;
-	freq.resize(ins.vars*2, 0);
-
-	Graph G;
-	G.init(ins.vars);
-	for(const auto& cls : {ins.clauses, ins.learnts}) {
-		for(const auto& clause : cls) {
-			for(int i=0; i<clause.size(); i++) {
-				freq[toInt(clause[i])]++;
-				for(int j=i+1; j<clause.size(); j++)
-					G.addEdge(var(clause[i]), var(clause[j]));
-			}
-		}
-	}
-
 	vars.clear();
-	for(int i=ins.npvars; i<ins.vars; i++) {
-		if(min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) == 0) continue;
 
-		if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4) ||
-					opt_vemore && (freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))]))
+	vector<int> freq;
+	Graph G(ins->vars, ins->clauses, ins->learnts, freq);
+
+	for(int i=ins->npvars; i<ins->vars; i++) {	// for only projected vars
+		if(min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) == 0)
+			continue;
+		if(isVECandidate(G, freq, i))
 			vars.push_back(i);
 	}
 }
 
-void Preprocessor::pickDefVars(vector<Var>& vars)
+template <class T_data>
+void Preprocessor<T_data>::pickDefVars(vector<Var>& vars)
 {
 	vars.clear();
-	vector<int> map(ins.vars);
+	vector<int> map(ins->vars);
 	vector<int> candv;
 
 	double stime = cpuTime();
 
 	{
 		vector<int> freq;
-		freq.resize(ins.vars*2, 0);
-
-		Graph G;
-		G.init(ins.vars);
-		for(const auto& cls : {ins.clauses, ins.learnts}) {
-			for(const auto& clause : cls) {
-				for(int i=0; i<clause.size(); i++) {
-					freq[toInt(clause[i])]++;
-					for(int j=i+1; j<clause.size(); j++)
-						G.addEdge(var(clause[i]), var(clause[j]));
-				}
-			}
-		}
+		Graph G(ins->vars, ins->clauses, ins->learnts, freq);
 
 		int count = 0;
-		for(int i=0; i<ins.npvars; i++) {
+		for(int i=0; i<ins->npvars; i++) {
 			map[i] = i;
 			if(min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) == 0) continue;
 
-			if((G.isSimplical(i) && min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) <= 4) ||
-						opt_vemore && (freq[toInt(mkLit(i))] * freq[toInt(~mkLit(i))] <= freq[toInt(mkLit(i))] + freq[toInt(~mkLit(i))])) {
-				if(ins.weighted && ins.lit_weights[toInt(mkLit(i))]!=ins.lit_weights[toInt(~mkLit(i))])
+			if(isVECandidate(G, freq, i)) {
+				if(ins->weighted && ins->lit_weights[toInt(mkLit(i))]!=ins->lit_weights[toInt(~mkLit(i))])
 					continue;
 
-				map[i] = (ins.vars + ins.vars - ins.npvars) + candv.size();
+				map[i] = ((ins->vars << 1) - ins->npvars) + candv.size();
 				candv.push_back(i);
 			}
 		}
@@ -562,15 +472,14 @@ void Preprocessor::pickDefVars(vector<Var>& vars)
 
 	if(candv.size() == 0) return;
 
-	// assert(!ins.projected || ins.vars == ins.npvars);
-	int newvars = ins.vars + candv.size()*2 + ins.vars - ins.npvars;
+	int newvars = ((ins->vars + candv.size()) << 1) - ins->npvars;		// ins->vars + candv.size()*2 + ins->vars - ins->npvars;
 	TestSolver S(newvars);
-	for(const auto& clause : ins.clauses) {
+	for(const auto& clause : ins->clauses) {
 		S.addClauseWith(clause);		// add the existing clause
 
 		bool toduplicate = false;
 		for(Lit l : clause)
-			if(var(l) >= ins.npvars || map[var(l)] >= ins.vars) {
+			if(var(l) >= ins->npvars || map[var(l)] >= ins->vars) {
 				toduplicate = true;
 				break;
 			}
@@ -579,9 +488,9 @@ void Preprocessor::pickDefVars(vector<Var>& vars)
 			vector<Lit> newc;
 			for(Lit l : clause) {
 				Lit nl;
-				if(var(l) >= ins.npvars)
-					nl = mkLit((ins.vars-ins.npvars)+var(l), sign(l));
-				else if(map[var(l)] >= ins.vars)
+				if(var(l) >= ins->npvars)
+					nl = mkLit((ins->vars-ins->npvars)+var(l), sign(l));
+				else if(map[var(l)] >= ins->vars)
 					nl = mkLit(map[var(l)], sign(l));
 				else
 					nl = l;
@@ -596,7 +505,7 @@ void Preprocessor::pickDefVars(vector<Var>& vars)
 		S.addClauseWith({~mkLit(map[v]+candv.size()), ~mkLit(v), mkLit(map[v])});
 	}
 
-	vector<bool> def(ins.npvars, false);
+	vector<bool> def(ins->npvars, false);
 	vec<Lit> assumptions;
 	for(int v : candv) {
 		assumptions.clear();
@@ -612,37 +521,38 @@ void Preprocessor::pickDefVars(vector<Var>& vars)
 			vars.push_back(v);
 		}
 
-		if(cpuTime() - stime > 60.0) break;
+		if(cpuTime() - stime > config.dve_timelimit) break;
 	}
 }
 
-int Preprocessor::ElimVars(const vector<Var>& vars)
+template <class T_data>
+int Preprocessor<T_data>::ElimVars(const vector<Var>& vars)
 {
 	int idx = 0;
-	int origclssz = ins.clauses.size();
+	int origclssz = ins->clauses.size();
 
-	vector<int> deleted(ins.vars, false);
+	vector<int> deleted(ins->vars, false);
 	for(; idx < vars.size(); idx++) {
 		Var v = vars[idx];
-		if(ins.clauses.size() > origclssz) break;
+		if(ins->clauses.size() > origclssz) break;
 
 		vector<vector<Lit>> pos;
 		vector<vector<Lit>> neg;
 
 		// find clauses with literals of v
-		for(int i = ins.clauses.size()-1; i >= 0; i--) {
-			vector<Lit>& clause = ins.clauses[i];
+		for(int i = ins->clauses.size()-1; i >= 0; i--) {
+			vector<Lit>& clause = ins->clauses[i];
 			for(int j = 0; j < clause.size(); j++) {
 				if(var(clause[j]) == v) {
-					bool positive = sign(clause[j]);
+					bool negative = sign(clause[j]);
 					sspp::ShiftDel(clause, j);
 
-					if(positive) {
-						pos.push_back(clause);
-					} else {
+					if(negative) {
 						neg.push_back(clause);
+					} else {
+						pos.push_back(clause);
 					}
-					sspp::SwapDel(ins.clauses, i);
+					sspp::SwapDel(ins->clauses, i);
 					break;
 				}
 			}
@@ -682,27 +592,28 @@ int Preprocessor::ElimVars(const vector<Var>& vars)
 				}
 				if(!taut) {
 					if(newc.size() == 1)
-						ins.assignedLits.push_back(newc[0]);
+						ins->assignedLits.push_back(newc[0]);
 					else
-						ins.clauses.push_back(newc);
+						ins->clauses.push_back(newc);
 				}
 			}
 		}
 
-		if(pos.size() == 0) {
-			ins.assignedLits.push_back(mkLit(v));
-		} else if(neg.size() == 0) {
-			ins.assignedLits.push_back(~mkLit(v));
+		if(neg.size() == 0) {
+			// MEMO: v is defined by others. Thus, v must be true on all models.
+			ins->assignedLits.push_back(mkLit(v));
+		} else if(pos.size() == 0) {
+			ins->assignedLits.push_back(~mkLit(v));
 		} else {
 			deleted[v] = true;
 		}
 	}
 
-	for(int i=ins.learnts.size()-1; i>=0; i--) {
-		vector<Lit>& clause = ins.learnts[i];
+	for(int i=ins->learnts.size()-1; i>=0; i--) {
+		vector<Lit>& clause = ins->learnts[i];
 		for(int j=0; j<clause.size(); j++) {
 			if(deleted[var(clause[j])]) {
-				sspp::SwapDel(ins.learnts, i);
+				sspp::SwapDel(ins->learnts, i);
 				break;
 			}
 		}
@@ -712,74 +623,76 @@ int Preprocessor::ElimVars(const vector<Var>& vars)
 
 static inline lbool val(const vec<lbool>& assigns, Lit p) { return assigns[var(p)] ^ sign(p); }
 
-void Preprocessor::Compact(const vec<lbool>& assigns)
+template <class T_data>
+void Preprocessor<T_data>::Compact(const vec<lbool>& assigns)
 {
 	int varnum = 0;
 	vector<bool> occurred;
-	occurred.resize(ins.vars, false);
+	occurred.resize(ins->vars, false);
 
 	// Compact Clauses
-	CompactClauses(assigns, ins.clauses, occurred, varnum);
-	CompactClauses(assigns, ins.learnts, occurred, varnum);
+	CompactClauses(assigns, ins->clauses, occurred, varnum);
+	CompactClauses(assigns, ins->learnts, occurred, varnum);
 
 	// Compact Variables
 	int new_idx = 0;
 	vector<Var> map;
 	vector<Var> nonpvars;
 
-	map.resize(ins.vars);
-	nonpvars.reserve(ins.vars-ins.npvars);
+	map.resize(ins->vars);
+	nonpvars.reserve(ins->vars-ins->npvars);
 
-	vector<mpfr::mpreal> lit_weights2;
-	if(ins.weighted) {
-		lit_weights2 = ins.lit_weights;
-		ins.lit_weights.resize(varnum*2);
+	vector<T_data> lit_weights2;
+	if(ins->weighted) {
+		lit_weights2 = ins->lit_weights;
+		ins->lit_weights.resize(varnum*2);
 	}
 
-	for(Var v=0; v < ins.vars; v++) {
+	for(Var v=0; v < ins->vars; v++) {
 		if(occurred[v]) {
-			if(ins.ispvars[v]) {
+			if(ins->ispvars[v]) {
 				map[v] = new_idx;
-				if(ins.weighted) {
-					ins.lit_weights[toInt(mkLit(new_idx))]  = lit_weights2[toInt(mkLit(v))];
-					ins.lit_weights[toInt(~mkLit(new_idx))] = lit_weights2[toInt(~mkLit(v))];
+				if(ins->weighted) {
+					ins->lit_weights[toInt(mkLit(new_idx))]  = lit_weights2[toInt(mkLit(v))];
+					ins->lit_weights[toInt(~mkLit(new_idx))] = lit_weights2[toInt(~mkLit(v))];
 				}
 				new_idx++;
 			}
 			else nonpvars.push_back(v);
 		} else {
-			if(ins.ispvars[v]) {
+			if(ins->ispvars[v]) {
 				if(assigns[v] == l_Undef) {
-					ins.freevars++;
-					if(ins.weighted)
-						ins.gweight *= lit_weights2[toInt(mkLit(v, true))] + lit_weights2[toInt(mkLit(v, false))];
+					ins->freevars++;
+					if(ins->weighted)
+						ins->gweight *= lit_weights2[toInt(mkLit(v, true))] + lit_weights2[toInt(mkLit(v, false))];
 				} else {
-					if(ins.weighted)
-						ins.gweight *= lit_weights2[toInt(mkLit(v, assigns[v]==l_False))];
+					if(ins->weighted)
+						ins->gweight *= lit_weights2[toInt(mkLit(v, assigns[v]==l_False))];
 				}
 			}
 		}
 	}
 
-	ins.npvars = new_idx;
+	ins->npvars = new_idx;
 	for(int i=0; i < nonpvars.size(); i++) {
 		map[nonpvars[i]] = new_idx;
 		new_idx++;
 	}
-	ins.vars = new_idx;
+	ins->vars = new_idx;
 
-	ins.ispvars.clear();
-	ins.ispvars.resize(ins.npvars, true);
-	ins.ispvars.resize(ins.vars, false);
+	ins->ispvars.clear();
+	ins->ispvars.resize(ins->npvars, true);
+	ins->ispvars.resize(ins->vars, false);
 
 	// Replace literals according to map
-	RewriteClauses(ins.clauses, map);
-	RewriteClauses(ins.learnts, map);
+	RewriteClauses(ins->clauses, map);
+	RewriteClauses(ins->learnts, map);
 
-	ins.assignedLits.clear();
+	ins->assignedLits.clear();
 }
 
-void Preprocessor::CompactClauses(const vec<lbool>& assigns, vector<vector<Lit>>& cls, vector<bool>& occurred, int& varnum)
+template <class T_data>
+void Preprocessor<T_data>::CompactClauses(const vec<lbool>& assigns, vector<vector<Lit>>& cls, vector<bool>& occurred, int& varnum)
 {
 	int i1, i2;
 	int j1, j2;
@@ -811,7 +724,8 @@ void Preprocessor::CompactClauses(const vec<lbool>& assigns, vector<vector<Lit>>
 	cls.resize(i2);
 }
 
-void Preprocessor::RewriteClauses(vector<vector<Lit>>& cls, const vector<Var>& map)
+template <class T_data>
+void Preprocessor<T_data>::RewriteClauses(vector<vector<Lit>>& cls, const vector<Var>& map)
 {
 	// We assume that map is injective for active variables, i.e., this does not change the length of clauses.
 
@@ -823,7 +737,8 @@ void Preprocessor::RewriteClauses(vector<vector<Lit>>& cls, const vector<Var>& m
 	}
 }
 
-void Preprocessor::RewriteClauses(vector<vector<Lit>>& cls, const vector<Lit>& map)
+template <class T_data>
+void Preprocessor<T_data>::RewriteClauses(vector<vector<Lit>>& cls, const vector<Lit>& map)
 {
 	// map may not be injective, i.e., this may strengthen clauses.
 
@@ -837,8 +752,8 @@ void Preprocessor::RewriteClauses(vector<vector<Lit>>& cls, const vector<Lit>& m
 		bool unit = false;
 		bool taut = false;
 		if(c.size() == 1) {
-			ins.assigns[var(c[0])] = sign(c[0]) ? l_False : l_True;
-			ins.assignedLits.push_back(c[0]);
+			ins->assigns[var(c[0])] = sign(c[0]) ? l_False : l_True;
+			ins->assignedLits.push_back(c[0]);
 			unit = true;
 		}
 		else {
@@ -855,65 +770,34 @@ void Preprocessor::RewriteClauses(vector<vector<Lit>>& cls, const vector<Lit>& m
 	}
 }
 
-void Preprocessor::Subsume()
+template <class T_data>
+void Preprocessor<T_data>::Subsume()
 {
 	{
 		sspp::Subsumer subsumer;
-		ins.clauses = subsumer.Subsume(ins.clauses);
-		sspp::SortAndDedup(ins.clauses);
+		ins->clauses = subsumer.Subsume(ins->clauses);
+		sspp::SortAndDedup(ins->clauses);
 	}
 
-	if (ins.learnts.empty()) return;
-	for (const auto& clause : ins.clauses) {
-		ins.learnts.push_back(clause);
+	if (ins->learnts.empty()) return;
+	for (const auto& clause : ins->clauses) {
+		ins->learnts.push_back(clause);
 	}
 
 	{
 		sspp::Subsumer subsumer_lrnt;
-		ins.learnts = subsumer_lrnt.Subsume(ins.learnts);
-		sspp::SortAndDedup(ins.learnts);
+		ins->learnts = subsumer_lrnt.Subsume(ins->learnts);
+		sspp::SortAndDedup(ins->learnts);
 	}
 
-	for (int i = 0; i < ins.learnts.size(); i++) {
-		if (std::binary_search(ins.clauses.begin(), ins.clauses.end(), ins.learnts[i])) {
-			sspp::SwapDel(ins.learnts, i);
+	for (int i = 0; i < ins->learnts.size(); i++) {
+		if (std::binary_search(ins->clauses.begin(), ins->clauses.end(), ins->learnts[i])) {
+			sspp::SwapDel(ins->learnts, i);
 			i--;
 		}
 	}
 }
 
-TreeDecomposition Preprocessor::getTD(int vlim, double dlim, double rlim, double timeout)
-{
-	if(ins.vars > vlim || ins.learnts.size() > ins.clauses.size() ) {
-		printf("c o give up\n");
-		TreeDecomposition dummy;
-		return dummy;
-	}
-
-	Graph Primal;
-	Primal.init(ins.vars);
-
-//	for(const auto& cls : {ins.clauses, ins.learnts}) {
-	for(const auto& cls : {ins.clauses}) {
-		for(const auto& clause : cls)
-			for(int i=0; i<clause.size(); i++)
-				for(int j=i+1; j<clause.size(); j++)
-					Primal.addEdge(var(clause[i]), var(clause[j]));
-	}
-
-	printf("c o nodes %d, edges %d\n", ins.vars, Primal.numEdges());
-
-	if((double)Primal.numEdges()/((long) ins.vars * ins.vars) > dlim || (double)Primal.numEdges()/ins.vars > rlim) {
-		printf("c o give up\n");
-		TreeDecomposition dummy;
-		return dummy;
-	}
-
-	printf("c o FlowCutter is running...\n");fflush(stdout);
-	IFlowCutter FC(ins.vars, Primal.numEdges(), timeout);
-	FC.importGraph(Primal);
-	Primal.clear();
-	return FC.constructTD();
-}
-
+template class PPMC::Preprocessor<mpz_class>;
+template class PPMC::Preprocessor<mpfr::mpreal>;
 
