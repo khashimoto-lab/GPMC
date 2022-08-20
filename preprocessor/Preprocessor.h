@@ -4,9 +4,12 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+
+#include "core/Config.h"
+#include "core/Instance.h"
+#include "gmpxx.h"
 #include "mpfr/mpreal.h"
 
-#include "preprocessor/Instance.h"
 #include "preprocessor/IFlowCutter.h"
 #include "preprocessor/TreeDecomposition.h"
 
@@ -35,26 +38,21 @@ private:
 	int num_elem;
 };
 
+template <class T_data>
 class Preprocessor {
 	friend class Solver;
 public:
-	Preprocessor();
-	// Preprocessor(bool outfile, int varlimit, double timelimit, int verbose) : var_limit(varlimit), time_limit(timelimit), outputDimacs(outfile), verbose(verbose) { }
+	Preprocessor() : ins(NULL) { };
 
-	void loadFromStdin(Instance::Mode mode) { ins.load(std::cin, mode); }
-	void loadFromFile(std::string filename, Instance::Mode mode);
+	void setConfig(GPMC::ConfigPreprocessor& conf) { this->config = conf; }
 
-	bool Simplify();
-	TreeDecomposition getTD(int vlim, double dlim, double rlim, double timeout);
-
-	Instance ins;
+	bool Simplify(GPMC::Instance<T_data>* ins);
 
 private:
 	bool SAT_FLE();
 	bool Strengthen();
 	bool MergeAdjEquivs();
-	bool VariableEliminate();
-	bool DefVariableEliminate();
+	bool VariableEliminate(bool dve);
 	void pickVars(std::vector<int>& vars);
 	void pickDefVars(std::vector<int>& vars);
 	int ElimVars(const std::vector<Glucose::Var>& del);
@@ -65,23 +63,24 @@ private:
 	void RewriteClauses(std::vector<std::vector<Glucose::Lit>>& cls, const std::vector<Glucose::Lit>& map);
 	void Subsume();
 
+	bool isVECandidate(Graph& G, std::vector<int>& freq, int i) const;
+
 	void printCNFInfo(const char* ppname = "", bool initial = false);
 
-	int var_limit;				// if #vars is over var_limit, it does not try EquivEl/VE/DefVE.
-	double time_limit;			// if it does not reach the last step (SAT_FLE) withn timelimit, the last step is skipped.
-
-	int verbose;
+	GPMC::Instance<T_data> *ins;
+	GPMC::ConfigPreprocessor config;
 };
 
-inline void Preprocessor::printCNFInfo(const char* ppname, bool initial)
+template <class T_data>
+inline void Preprocessor<T_data>::printCNFInfo(const char* ppname, bool initial)
 {
 	if(initial)
-		printf("c o [%-7s] %d vars (%d pvars), %d cls\n", ppname, ins.vars, ins.npvars, ins.clauses.size());
+		printf("c o [%-7s] %d vars (%d pvars), %d cls\n", ppname, ins->vars, ins->npvars, ins->clauses.size());
 	else
-		printf("c o [%-7s] %d vars (%d pvars), %d cls, %d lrnts, %d fvars, elap. %.2lf s\n", ppname, ins.vars, ins.npvars, ins.clauses.size(), ins.learnts.size(), ins.freevars, Glucose::cpuTime());
+		printf("c o [%-7s] %d vars (%d pvars), %d cls, %d lrnts, %d fvars, elap. %.2lf s\n", ppname, ins->vars, ins->npvars, ins->clauses.size(), ins->learnts.size(), ins->freevars, Glucose::cpuTime());
 
-	if(ins.weighted)
-		std::cout << "c o gweight " << ins.gweight << std::endl;
+	if(ins->weighted)
+		std::cout << "c o gweight " << ins->gweight << std::endl;
 
 	fflush(stdout);
 }

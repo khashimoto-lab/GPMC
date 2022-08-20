@@ -12,30 +12,14 @@ using namespace Glucose;
 using namespace GPMC;
 
 //=================================================================================================
-// Options:
-
-static const char* _mc = "GPMC -- COUNTER";
-static BoolOption opt_mc       (_mc, "mc", "Model counting (all vars are projection vars)", false);
-// static BoolOption opt_postproc (_mc, "pp", "Postprocessing", false);
-
-static BoolOption opt_bj       (_mc, "bj", "Backjumping", true);
-static DoubleOption opt_bj_thd (_mc, "bjthd", "Backjumping threshold", 0.5, DoubleRange(0, false, 1, false));
-
-static BoolOption opt_simp     (_mc, "rmvsatcl", "Remove satisfied clauses", true);
-static IntOption  opt_simp_thd (_mc, "rmvsatclthd", "Thereshold of removing satisfied clauses", 2, IntRange(0,INT32_MAX));
-
-//=================================================================================================
-// Constructor/Destructor:
+// Constructor
 
 template <typename T_data>
-Counter<T_data>::Counter(bool weighted) :
-  npmodels           (0)
-, on_bj              (opt_bj)
-, bjthd              (opt_bj_thd)
-, on_simp            (opt_simp)
-, verbosity_c        (1)
-, mc                 (opt_mc)
-, wc					(weighted)
+Counter<T_data>::Counter(Configuration& config_) :
+  sat					(false)
+, npmodels           (0)
+, config				(config_.cntr)
+, tdconfig				(config_.td)
 , conflicts_pre      (0)
 , decisions_pre      (0)
 , propagations_pre   (0)
@@ -47,7 +31,6 @@ Counter<T_data>::Counter(bool weighted) :
 , nbackjumps_sp      (0)
 , reduce_dbs_pre     (0)
 , simp_dbs           (0)
-, real_stime         (realTime())
 , simplify_time      (0.0)
 , npvars             (0)
 , npvars_isolated    (0)
@@ -57,264 +40,63 @@ Counter<T_data>::Counter(bool weighted) :
 , last_cr            (CRef_Undef)
 , last_lit           (lit_Undef)
 , gweight				(1)
+, on_bj				(config_.cntr.backjump)
+, on_simp				(config_.cntr.remove_sat_cls)
+, progress				(INIT)
+, verbosity_c        (1)
 {
 	verbosity = 0;
 	showModel = false;
+
+	switch(config_.cntr.mode) {
+	case MC:
+		wc = false, mc = true; break;
+	case WMC:
+		wc = true, mc = true; break;
+	case PMC:
+		wc = false, mc = false; break;
+	case WPMC:
+		wc = true, mc = false; break;
+	}
+
+	pp.setConfig(config_.pp);
+	cmpmgr.setConfig(config_.cm);
 }
 
-template <typename T_data>
-Counter<T_data>::~Counter()
-{
-}
-
-#if 0
 //=================================================================================================
-// Methods for simplifying
-
+// Preprocessing
 template <typename T_data>
-bool Counter<T_data>::presimplify()
+bool Counter<T_data>::preprocess()
 {
-	assert(decisionLevel() == 0);
+	sat = pp.Simplify(&ins);
 
-	if(!FailedLiterals()) return false;
+	bool done = ins.unsat || ins.vars == 0;
 
-	if(solve_() == l_False) return false;
-
-	conflicts_pre = conflicts;
-	decisions_pre = decisions;
-	propagations_pre = propagations;
-	reduce_dbs_pre = nbReduceDB;
-
-	Compact();
-
-	simpDB_assigns = nAssigns();
-	simpDB_props   = clauses_literals + learnts_literals;
-
-	return true;
-}
-
-template <typename T_data>
-bool Counter<T_data>::FailedLiterals() {
-	int last_size;
-	do {
-		last_size = trail.size();
-
-		for (Var v = 0; v < nVars(); v++)
-			if (value(v) == l_Undef) {
-				int sz = trail.size();
-				uncheckedEnqueue(mkLit(v, true));
-				CRef confl = propagate();
-
-				for(int c = trail.size()-1; c >= sz; c--){
-					Var x = var(trail[c]);
-					assigns[x] = l_Undef;
-				}
-				qhead = sz;
-				trail.shrink(trail.size() - sz);
-
-				if(confl != CRef_Undef){
-					sz = trail.size();
-					uncheckedEnqueue(mkLit(v, false));
-					confl = propagate();
-					if(confl != CRef_Undef) return false;
-				} else {
-					sz = trail.size();
-					uncheckedEnqueue(mkLit(v, false));
-					confl = propagate();
-
-					for(int c = trail.size()-1; c >= sz; c--){
-						Var x = var(trail[c]);
-						assigns[x] = l_Undef;
-					}
-					qhead = sz;
-					trail.shrink(trail.size() - sz);
-
-					if(confl != CRef_Undef){
-						uncheckedEnqueue(mkLit(v, true));
-						confl = propagate();
-						if(confl != CRef_Undef) return false;
-					}
-				}
-			}
-
-	} while (trail.size() > last_size);
-
-	return true;
-}
-
-template <typename T_data>
-void Counter<T_data>::Compact() {
-	assert(decisionLevel() == 0);
-
-	int varnum = 0;
-	vec<bool> occurred;
-	occurred.growTo(nVars(), false);
-
-	// Compact Clauses
-	CompactClauses(clauses, occurred, varnum);
-	CompactClauses(learnts, occurred, varnum);
-
-	// Compact Variables
-	int new_idx = 0;
-	vec<Var> map, nonpvars;
-	occ_lists.growTo(2*varnum);
-	map.growTo(nVars());
-	nonpvars.capacity(nVars()-npvars);
-
-	vec<double> activity2;
-	vec<char> polarity2;
-	vec<T_data> lit_weight2;
-	activity.copyTo(activity2);
-	activity.shrink(nVars()-varnum);
-	polarity.copyTo(polarity2);
-	polarity.shrink(nVars()-varnum);
-
-	if(wc) {
-		lit_weight.copyTo(lit_weight2);
-		lit_weight.shrink(nVars()*2-varnum*2);
+	if(ins.unsat) {
+		npmodels = 0;
+		progress = COMPLETED;
 	}
-
-
-	for(Var v=0; v < nVars(); v++) {
-		if(occurred[v]) {
-			if(ispvar[v]) {
-				map[v] = new_idx;
-				activity[new_idx] = activity2[v];
-				polarity[new_idx] = polarity2[v];
-				if(wc) {
-					lit_weight[toInt(mkLit(new_idx))] = lit_weight2[toInt(mkLit(v))];
-					lit_weight[toInt(~mkLit(new_idx))] = lit_weight2[toInt(~mkLit(v))];
-				}
-				new_idx++;
-			}
-			else nonpvars.push_(v);
-		} else {
-			// if(value(v) == l_Undef && ispvar[v]) npvars_isolated++;
-			if(ispvar[v]) {
-				if(value(v) == l_Undef) {
-					npvars_isolated++;
-					if(wc) gweight *= lit_weight2[toInt(mkLit(v, true))] + lit_weight2[toInt(mkLit(v, false))];
-				} else {
-					if(wc) gweight *= lit_weight2[toInt(mkLit(v, value(v)==l_False))];
-				}
-			}
+	else if (ins.vars == 0) {
+		if(wc)
+			npmodels = ins.gweight;
+		else
+			npmodels = ((T_data)1) << ins.freevars;
+		progress = COMPLETED;
+	}
+	else {
+		progress = PREPROCESSED;
+		if (config.pp_outfile != "NULL") {
+			ofstream out(config.pp_outfile);
+			printf("c o outputing simplified CNF...");
+			ins.toDimacs(out);
+			printf("done\n");
 		}
 	}
-	npvars = new_idx;
-	for(int i=0; i < nonpvars.size(); i++) {
-		map[nonpvars[i]] = new_idx;
-		activity[new_idx] = activity2[nonpvars[i]];
-		polarity[new_idx] = polarity2[nonpvars[i]];
-		new_idx++;
-	}
-	activity2.clear();
-	polarity2.clear();
 
-	// Replace literals according to map
-	RewriteClauses(clauses, map);
-	RewriteClauses(learnts, map);
-
-	// reset
-	reinit(varnum);
-	checkGarbage(0.05);
+	return done;
 }
 
-template <typename T_data>
-void Counter<T_data>::RewriteClauses(const vec<CRef>& cs, const vec<Var>& map)
-{
-	for(int i=0; i < cs.size(); i++) {
-		Clause& c = ca[cs[i]];
-		if(c.size() == 2) {
-			c[0] = mkLit(map[var(c[0])], sign(c[0]));
-			c[1] = mkLit(map[var(c[1])], sign(c[1]));
-		} else {
-			for(int j = 0; j < c.size(); j++)
-				c[j] = mkLit(map[var(c[j])], sign(c[j]));
-		}
-	}
-}
-
-template <typename T_data>
-void Counter<T_data>::CompactClauses(vec<CRef>& cs, vec<bool>& occurred, int& varnum)
-{
-	int i1, i2;
-	int j1, j2;
-
-	for(i1 = 0, i2 = 0; i1 < cs.size(); i1++)	{
-		detachClause(cs[i1]);
-
-		Clause& c = ca[cs[i1]];
-		for(j1 = 0, j2 = 0; j1 < c.size(); j1++) {
-			if(value(c[j1]) == l_Undef)
-				c[j2++] = c[j1];
-			else if(value(c[j1]) == l_True) {
-				removeClauseNoDetach(cs[i1]);
-				goto NEXTC;
-			}
-		}
-		c.shrink(j1-j2);
-
-		for(j1=0; j1 < c.size(); j1++) {
-			Var v = var(c[j1]);
-			if (!occurred[v]){
-				occurred[v] = true;
-				varnum++;
-			}
-		}
-
-		cs[i2++] = cs[i1];
-		NEXTC:;
-	}
-	cs.shrink(i1-i2);
-}
-
-template <typename T_data>
-void Counter<T_data>::removeClauseNoDetach(CRef cr) {
-	Clause& c = ca[cr];
-
-	// Don't leave pointers to free'd memory!
-	if (locked(c)) vardata[var(c[0])].reason = CRef_Undef;
-	c.mark(1);
-	ca.free(cr);
-}
-
-template <typename T_data>
-void Counter<T_data>::reinit(int varnum)
-{
-	qhead = 0;
-	trail.clear();
-
-	vardata  .clear();
-	vardata  .growTo(varnum, mkVarData(CRef_Undef, 0));
-	assigns  .clear();
-	assigns  .growTo(varnum, l_Undef);
-	seen     .clear();
-	seen     .growTo(varnum, 0);
-
-	decision .clear();
-	decision .growTo(varnum, false);
-
-	permDiff.clear();
-	permDiff.growTo(varnum,0);
-
-	watches.cleanAll();
-	watches.clear();
-	for(int i=0; i<varnum; i++) {
-		watches.init(mkLit(varnum, false));
-		watches.init(mkLit(varnum, true ));
-	}
-	watchesBin.cleanAll();
-	watchesBin.clear();
-	for(int i=0; i<varnum; i++) {
-		watchesBin.init(mkLit(i, false));
-		watchesBin.init(mkLit(i, true ));
-	}
-
-	for(int i=0; i<clauses.size(); i++) attachClause(clauses[i]);
-	for(int i=0; i<learnts.size(); i++) attachClause(learnts[i]);
-}
-#endif
-
+// Inprocessing
 template <typename T_data>
 bool Counter<T_data>::simplify()
 {
@@ -337,9 +119,9 @@ bool Counter<T_data>::simplify()
 	simpDB_props   = clauses_literals + learnts_literals;   // (shouldn't depend on stats really, but it will do for now)
 
 	simp_dbs++;
-	simplify_time += cpuTime() - cpu_time;
+	// simplify_time += cpuTime() - cpu_time;
 
-	if(simp_dbs >= opt_simp_thd)
+	if(simp_dbs >= config.rmvsatcl_threshold)
 		on_simp = false;
 	return true;
 }
@@ -349,31 +131,22 @@ bool Counter<T_data>::simplify()
 template <typename T_data>
 bool Counter<T_data>::countModels()
 {
-	double start_time = cpuTime();
-// 	bool simp = presimplify();
-//	if (verbosity_c) {
-//		double simp_time = cpuTime();
-//		if (verbosity_c) { printProblemStats(simp_time - start_time, "simplifying"); }
-//	}
-
-	if (!sat) {
-		npmodels = 0;
+	if (progress != PREPROCESSED) {
+		printf("c o The instance is not preprocessed, or model counting is already done.\n");
 		return false;
-	} else if (nVars() == 0) {
-		sat = true;
-		if(wc)
-			npmodels = gweight;
-		else
-			npmodels = ((T_data)1) << nIsoPVars();
-
-		return true;
 	}
 
+	computeTDScore();
+	printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+
+	printf("c o Counting starts ...\n");fflush(stdout);
+	import();
 	solves = starts = 0;
 	count_main();
 	cancelUntil(0);
 
-	return true;
+	progress = asynch_interrupt ? FAILED : COMPLETED;
+	return !asynch_interrupt;
 }
 
 template <typename T_data>
@@ -385,10 +158,11 @@ void Counter<T_data>::count_main()
 
 	btStateT bstate = RESOLVED;
 	limlevel = 0;
-	cmpmgr.init(wc, nVars(),nPVars(),clauses,ca);
+	cmpmgr.init(nVars(),nPVars(),clauses,ca);
 
 	for(;;) {
 		assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
+		if(asynch_interrupt) return;
 
 		int bpos = trail.size();
 		for(int i = 0; i < unitcls.size(); i++){
@@ -421,10 +195,7 @@ void Counter<T_data>::count_main()
 			bool suc = analyzeMC(confl, learnt_clause, selectors, backtrack_level, nblevels, szWoutSelectors);
 			if(!suc) {
 				nbackjumps_sp++;
-				cancelUntil(backtrack_level);
-				cmpmgr.backjumpTo(backtrack_level);
-				cmpmgr.removeCachePollutions();
-				cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
+				bjResolve(backtrack_level);
 				bstate = RESOLVED;
 				continue;
 			}
@@ -448,29 +219,7 @@ void Counter<T_data>::count_main()
 			varDecayActivity();
 			claDecayActivity();
 
-			int level = std::max(backtrack_level, limlevel);
-			bool canjump = on_bj && level+1 < decisionLevel() && (double)level/decisionLevel() < opt_bj_thd;
-			if(canjump) {
-				nbackjumps++;
-				cancelUntil(level);
-				cmpmgr.backjumpTo(level);
-				cmpmgr.removeCachePollutions();
-				cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
-				if(cr != CRef_Undef) {
-					uncheckedEnqueue(learnt_clause[0], cr);
-					if(wc && var(learnt_clause[0]) < npvars && cmpmgr.isDecCand(var(learnt_clause[0]))) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(learnt_clause[0])]);
-				}
-				bstate = RESOLVED;
-
-				if(nbackjumps > nPVars()) {
-					on_bj = false;
-				}
-			}
-			else {
-				cmpmgr.topDecision().increaseModels((T_data)0, false);	// set 0 (no model found at the current branch)
-				bstate = backtrack(backtrack_level, learnt_clause[0], cr);
-			}
-
+			bstate = Resolve(backtrack_level, cr, learnt_clause[0]);
 		} else {
 			// NO CONFLICT
 			assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
@@ -501,7 +250,7 @@ void Counter<T_data>::count_main()
 						cmpmgr.popComponent();
 					}
 					else if(sat_status == l_False) break;
-					else { assert(false); abort(); }
+					else { assert(asynch_interrupt); asynch_interrupt = true; return;}
 				}
 
 				if(sat_status == l_False){
@@ -511,38 +260,12 @@ void Counter<T_data>::count_main()
 
 					if(!last_suc) {
 						nbackjumps_sp++;
-						cancelUntil(last_bklevel);
-						cmpmgr.backjumpTo(last_bklevel);
-						cmpmgr.removeCachePollutions();
-						cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
+						bjResolve(last_bklevel);
 						bstate = RESOLVED;
 						continue;
 					}
 
-					int level = std::max(last_bklevel, limlevel);
-					bool lastcanjump = on_bj && level+1 < decisionLevel() && (double)level/decisionLevel() < opt_bj_thd;
-					if(lastcanjump) {
-						nbackjumps++;
-						cancelUntil(level);
-						cmpmgr.backjumpTo(level);
-						cmpmgr.removeCachePollutions();
-						cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
-						if(last_cr != CRef_Undef) {
-							assert(value(last_lit) == l_Undef);
-							uncheckedEnqueue(last_lit, last_cr);
-							if(wc && var(last_lit) < npvars && cmpmgr.isDecCand(var(last_lit))) {
-								cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(last_lit)]);
-							}
-						}
-						bstate = RESOLVED;
-
-						if(nbackjumps > nPVars()) {
-							on_bj = false;
-						}
-					} else {
-						cmpmgr.topDecision().increaseModels((T_data)0, false);
-						bstate = backtrack(last_bklevel, last_lit, last_cr);
-					}
+					bstate = Resolve(last_bklevel, last_cr, last_lit);
 				} else if(!cmpmgr.topDecision().hasUnprocessedSplitComp()){
 					bstate = backtrack();
 				}
@@ -802,15 +525,45 @@ bool Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selec
 }
 
 template <typename T_data>
-btStateT Counter<T_data>::backtrack(int backtrack_level, Lit lit, CRef cr) {
+inline void Counter<T_data>::bjResolve(int level) {
+	cancelUntil(level);
+	cmpmgr.backjumpTo(level);
+	cmpmgr.removeCachePollutions();
+	cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
+}
+
+template <typename T_data>
+inline btStateT Counter<T_data>::Resolve(int bk_level, CRef cr, Lit lit) {
+	int level = std::max(bk_level, limlevel);
+	bool canjump = on_bj && level+1 < decisionLevel() && (double)level/decisionLevel() < config.bj_threshold;
+	if(canjump) {
+		nbackjumps++;
+		bjResolve(level);
+		if(cr != CRef_Undef) {
+			uncheckedEnqueue(lit, cr);
+			if(wc && var(lit) < npvars && cmpmgr.isDecCand(var(lit))) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(lit)]);
+		}
+		if(nbackjumps > nPVars()) {
+			on_bj = false;
+		}
+		return RESOLVED;
+	}
+	else {
+		cmpmgr.topDecision().increaseModels((T_data)0, false);	// set 0 (no model found at the current branch)
+		return backtrack();
+	}
+}
+
+template <typename T_data>
+btStateT Counter<T_data>::backtrack() {
 	if (decisionLevel() == 0)
 		return EXIT;
 	for (;;) {
 		assert(decisionLevel() > 0);
 		assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
 
-		if (cmpmgr.topDecision().isFirstBranch()
-				&& !asynch_interrupt) {
+		if(wc) cmpmgr.topDecision().mulLitsWeights();
+		if (cmpmgr.topDecision().isFirstBranch()) {
 			// FirstBranch
 
 			Lit dlit = trail[trail_lim.last()];
@@ -826,9 +579,7 @@ btStateT Counter<T_data>::backtrack(int backtrack_level, Lit lit, CRef cr) {
 			// SecondBranch
 			cmpmgr.prevDecision().increaseModels(
 					cmpmgr.topDecision().totalModels(), cmpmgr.topDecision().hasModel());
-			if (!asynch_interrupt)
-				cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),
-						cmpmgr.topDecision().totalModels());
+			cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(), cmpmgr.topDecision().totalModels());
 			cmpmgr.eraseComponentStackID();
 
 			cancelCurDL();
@@ -893,7 +644,7 @@ lbool Counter<T_data>::solveSAT(void) {
 	uint64_t old_propagations = propagations;
 
 	lbool status = l_Undef;
-	while (status == l_Undef) {
+	while (status == l_Undef && !asynch_interrupt) {
 		status = searchBelow(sat_start_dl);
 	}
 
@@ -1045,28 +796,10 @@ lbool Counter<T_data>::searchBelow(int start_dl) {
 
 //=================================================================================================
 // Print methods:
-static mpfr::mpreal Log10(const mpz_class& num) {
-  assert(num >= 0);
-  if (num == 0) {
-    return -std::numeric_limits<double>::infinity();
-  }
-  mpfr::mpreal num1(num.get_mpz_t());
-  return mpfr::log10(num1);
-}
-static void PrintLog10(const mpz_class& num) {
-  cout<<"c s log10-estimate "<<Log10(num)<<endl;
-}
-static void PrintLog10(const mpfr::mpreal& num) {
-  cout<<"c s log10-estimate "<<mpfr::log10(num)<<endl;
-}
-
 template <typename T_data>
 void Counter<T_data>::printStats() const
 {
 	if(verbosity_c) {
-		// double cpu_time = cpuTime();
-		// double mem_used = memUsedPeak();
-
 		printf("c o [Statistics]\n");
 		printf("c o conflicts             = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", conflicts, conflicts-conflicts_sg, conflicts_sg);
 		printf("c o decisions             = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", decisions, decisions-decisions_sg, decisions_sg);
@@ -1080,100 +813,20 @@ void Counter<T_data>::printStats() const
 		printf("c o isolated_pvars        = %"PRIu64"\n", nIsoPVars());
 		printf("c o SAT calls             = %-11"PRIu64" (SAT %"PRIu64", UNSAT %"PRIu64")\n", solves, sats, solves-sats);
 		printf("c o SAT starts            = %"PRIu64"\n", starts);
-		printf("c o backjumps             = %-11"PRIu64" (sp %"PRIu64") [init %s / final %s]\n", nbackjumps+nbackjumps_sp, nbackjumps_sp, opt_bj ? "on" : "off", on_bj ? "on" : "off");
+		printf("c o backjumps             = %-11"PRIu64" (sp %"PRIu64") [init %s / final %s]\n", nbackjumps+nbackjumps_sp, nbackjumps_sp, config.backjump ? "on" : "off", on_bj ? "on" : "off");
 
-		// if (mem_used != 0)
-		//	 printf("c o Memory used           = %.2f MB\n", mem_used);
-		// printf("c o CPU time              = %.3f s\n", cpu_time);
-		// printf("c o Real time             = %.3f s\n", realTime() - real_stime);
 		printf("c o\n");
-
-		printf("c o [Result]\n");
+		fflush(stdout);
 	}
-	if(!asynch_interrupt) {
-		printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
-		if(mc) {
-			if(wc)
-				printf("c s type wmc\n");
-			else
-				printf("c s type mc\n");
-		} else {
-			if(wc)
-				printf("c s type pwmc\n");
-			else
-				printf("c s type pmc\n");
-		}
-
-		if(!sat) {
-			printf("c s exact arb int 0\n");
-			printf("c s log10-estimate -inf\n");
-		} else {
-			if(wc) {
-				int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
-				cout.precision(precision);
-				if(precision > 15) {
-					cout << "c o precision " << precision << endl;
-					cout << "c s exact prec-sci " <<  npmodels << endl;
-				} else {
-					cout << "c s exact double prec-sci " <<  npmodels << endl;
-				}
-			}
-			else {
-				cout << "c s exact arb int " << npmodels << endl;
-			}
-
-			cout.precision(15);
-			PrintLog10(npmodels);
-		}
-	} else {
-			printf("s UNKNOWN\n");
-	}
-	printf("c o\n");
-	fflush(stdout);
 }
 
 //=================================================================================================
-// Methods for Debug
-
-template <typename T_data>
-void Counter<T_data>::toDimacsRaw(const char *file)
-{
-	FILE* f = fopen(file, "wr");
-	if (f == NULL)
-		fprintf(stderr, "could not open file %s\n", file), exit(1);
-
-	fprintf(f, "p cnf %d %d\n", nVars(), nClauses());
-
-	fprintf(f, "cr ");
-	for(int i=0; i<nPVars(); i++)
-		fprintf(f, "%d ", i+1);
-	fprintf(f, "0\n");
-
-	for(int i=0; i<trail.size();i++){
-		fprintf(f, "%s%d 0\n", sign(trail[i]) ? "-" : "", var(trail[i])+1);
-	}
-	for(int i=0; i<clauses.size(); i++) {
-		Clause& c = ca[clauses[i]];
-		for(int j=0; j<c.size(); j++) {
-			fprintf(f, "%s%d ", sign(c[j]) ? "-":"", var(c[j])+1);
-		}
-		fprintf(f, "0\n");
-	}
-
-	fclose(f);
-}
-
 // Methods for Importing instance and additional information
-template <>
-void Counter<mpz_class>::loadWeight(const PPMC::Instance &ins)
+template <class T_data>
+void Counter<T_data>::loadWeight()
 {
-	assert(!wc);
-	return;
-}
-template <>
-void Counter<mpfr::mpreal>::loadWeight(const PPMC::Instance &ins)
-{
-	assert(wc);
+	if(!wc) return;
+
 	gweight = ins.gweight;
 	lit_weight.clear();
 	lit_weight.growTo(2*npvars);
@@ -1181,11 +834,10 @@ void Counter<mpfr::mpreal>::loadWeight(const PPMC::Instance &ins)
 		lit_weight[toInt(mkLit(i))] = ins.lit_weights[toInt(mkLit(i))];
 		lit_weight[toInt(~mkLit(i))] = ins.lit_weights[toInt(~mkLit(i))];
 	}
-	// assert(lit_weight.size() == ins.lit_weights.size());
 }
 
 template <typename T_data>
-void Counter<T_data>::import(const PPMC::Instance &ins)
+void Counter<T_data>::import()
 {
 	int nvars = ins.vars;
 	watches  .init(mkLit(nvars-1, true ));
@@ -1217,27 +869,67 @@ void Counter<T_data>::import(const PPMC::Instance &ins)
 	npvars_isolated = ins.freevars;
 
 	sat = !ins.unsat;
-	wc = ins.weighted;
-	mc = !ins.projected;
-	loadWeight(ins);
+	loadWeight();
 }
 
 template <typename T_data>
-void Counter<T_data>::computeTDScore(const vector<int>& dists, double coef)
+void Counter<T_data>::computeTDScore()
 {
 	tdscore.clear();
-	tdscore.growTo(npvars, 0);
+	tdscore.growTo(ins.npvars, 0);
 
-	if(dists.size() == 0) return;
+	if(!config.doTD) return;
 
-	int max_dst = 0;
-	for(int i=0; i<nVars(); i++) {
-		max_dst = max(max_dst, dists[i]);
+	bool conditionOnCNF = ins.vars > 20 && ins.vars <= tdconfig.varlim && ins.learnts.size() <= ins.clauses.size();
+	if(!(conditionOnCNF || config.alwTD)) return;
+
+	Graph Primal(ins.vars, ins.clauses);
+	printf("c o Primal graph: nodes %d, edges %d\n", ins.vars, Primal.numEdges());
+
+	bool conditionOnPrimalGraph =
+			(double)Primal.numEdges()/((long) ins.vars * ins.vars) <= tdconfig.denselim
+			&& (double)Primal.numEdges()/ins.vars <= tdconfig.ratiolim;
+	if(!(conditionOnPrimalGraph || config.alwTD)) return;
+
+	// run FlowCutter
+	printf("c o FlowCutter is running...\n");fflush(stdout);
+	IFlowCutter FC(ins.vars, Primal.numEdges(), tdconfig.timelim);
+	FC.importGraph(Primal);
+	Primal.clear();
+	TreeDecomposition td = FC.constructTD();
+
+	bool uselessTD = true;
+	if(td.numNodes() > 0) {	// if TD construction is successful
+		// find a centroid of the constructed TD
+		int centroid = td.centroid(ins.npvars);
+
+		// write the the constructed TD (if needed)
+		if(config.td_outfile != "NULL") {
+			ofstream out(config.td_outfile);
+			td.toDimacs(out, centroid+1, ins.npvars);
+		}
+
+		bool conditionOnTreeWidth = (double)td.width()/ins.npvars < tdconfig.twvarlim;
+		if(conditionOnTreeWidth || config.alwTD) {
+			std::vector<int> dists = td.distanceFromCentroid(ins.npvars);
+			if(!dists.empty()) {
+				int max_dst = 0;
+				for(int i=0; i<ins.vars; i++)
+					max_dst = max(max_dst, dists[i]);
+				if(max_dst > 0) {
+					for(int i=0; i<ins.npvars; i++)
+						tdscore[i] = config.coef_tdscore * ((double)(max_dst - dists[i])) / (double)max_dst;
+					uselessTD = false;
+				}
+			}
+		}
 	}
-	if(max_dst == 0) return;
-	for(int i=0; i<npvars; i++) {
-			tdscore[i] = coef * ((double)(max_dst - dists[i])) / (double)max_dst;
-	}
+
+	if(uselessTD)
+		printf("c o ignore td\n");
+
+	printf("c o Elapsed time %.2lf s\n", cpuTime());
+	fflush(stdout);
 }
 
 //=================================================================================================

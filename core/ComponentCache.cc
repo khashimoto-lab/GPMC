@@ -2,7 +2,6 @@
 #include <gmpxx.h>
 #include "mpfr/mpreal.h"
 #include "core/Component.h"
-#include "utils/Options.h"
 
 // #define USE_SYSINFO
 
@@ -13,8 +12,6 @@
 using namespace GPMC;
 using namespace std;
 
-IntOption  opt_cachesize ("GPMC -- CACHE", "cs", "Maximum component cache size (MB) (not strict)", 4000, IntRange(1, INT32_MAX));
-
 template <typename T_data>
 unsigned PackedComponent<T_data>::_bits_per_clause = 0;
 template <typename T_data>
@@ -24,6 +21,7 @@ unsigned PackedComponent<T_data>::_variable_mask = 0;
 template <typename T_data>
 unsigned PackedComponent<T_data>::_clause_mask = 0;
 
+#if 0
 int availableRAMSize(){
 #ifdef USE_SYSINFO
 	struct sysinfo info;
@@ -50,12 +48,13 @@ int availableRAMSize(){
 	return maximum_cache_size;
 
 #else
-	return opt_cachesize;
+	return default_cachesize;
 #endif
 }
+#endif
 
 template <class T_data>
-void ComponentCache<T_data>::init() {
+void ComponentCache<T_data>::init(int cachesize) {
 	table_.clear();
 	entry_base_.clear();
 	entry_base_.reserve(2000000);
@@ -64,7 +63,8 @@ void ComponentCache<T_data>::init() {
 	free_entry_base_slots_.clear();
 	free_entry_base_slots_.reserve(10000);
 
-	maximum_cache_size_bytes = (int64_t) availableRAMSize() * 1048576;
+	// maximum_cache_size_bytes = (int64_t) availableRAMSize() * 1048576;
+	maximum_cache_size_bytes = (int64_t) cachesize * 1048576;
 
 	recompute_bytes_memory_usage();
 }

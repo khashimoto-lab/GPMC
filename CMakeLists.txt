@@ -14,9 +14,10 @@ add_subdirectory(flow-cutter-pace17)
 
 add_library(gpmc STATIC 
 	core/ComponentCache.cc core/ComponentManager.cc core/Counter.cc
+	core/Config.cc core/Instance.cc
 	core/Solver.cc 
 	utils/Options.cc utils/System.cc
-	preprocessor/Instance.cc preprocessor/Preprocessor.cc preprocessor/TestSolver.cc 
+	preprocessor/Preprocessor.cc preprocessor/TestSolver.cc 
 	preprocessor/lib_sharpsat_td/subsumer.cpp
 	preprocessor/TreeDecomposition.cc preprocessor/IFlowCutter.cc
 	)

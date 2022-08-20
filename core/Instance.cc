@@ -1,25 +1,24 @@
-#include "preprocessor/Instance.h"
+#include "../core/Instance.h"
+
 #include "mtl/Sort.h"
-//#include "core/SolverTypes.h"
 
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <algorithm>
 
-using namespace PPMC;
 using namespace Glucose;
+using namespace GPMC;
 using namespace std;
 
-Instance::Instance() :
+template <class T_data>
+Instance<T_data>::Instance() :
 vars(0),
-mode(MC),
 weighted(false),
 projected(false),
 npvars(0),
 freevars(0),
 gweight(1),
-isSteady(false),
 unsat(false)
 {}
 
@@ -43,9 +42,10 @@ static void Tokens(string buf, vector<string>& ret) {
 	if (ret.back().empty()) ret.pop_back();
 }
 
-void Instance::load(istream& in, Mode mode) {
-	this->mode = mode;
-	reflectMode(mode);
+template <class T_data>
+void Instance<T_data>::load(istream& in, bool weighted, bool projected) {
+	this->weighted = weighted;
+	this->projected = projected;
 
 	string buf;
 	vector<Lit> ps;
@@ -134,15 +134,17 @@ void Instance::load(istream& in, Mode mode) {
 					return;
 				}
 				ps.clear();
+			} else {
+				cerr << "c c invalid Clause!" << endl;
 			}
 		}
 	}
 
 	learnts.clear();
-	isSteady = false;
 }
 
-bool Instance::addClause(vector<Lit>& ps, bool learnt) {
+template <class T_data>
+bool Instance<T_data>::addClause(vector<Lit>& ps, bool learnt) {
 	sort(ps.begin(), ps.end());
 
 	vec<Lit> oc;
@@ -173,34 +175,22 @@ bool Instance::addClause(vector<Lit>& ps, bool learnt) {
 	return true;
 }
 
-void Instance::reflectMode(Mode mode) {
-	switch(mode) {
-	case MC:
-		weighted = false, projected = false; break;
-	case WMC:
-		weighted = true, projected = false; break;
-	case PMC:
-		weighted = false, projected = true; break;
-	case WPMC:
-		weighted = true, projected = true; break;
-	}
-}
-
 // For Debug
- void Instance::toDimacs(std::ostream& out)
+template <class T_data>
+ void Instance<T_data>::toDimacs(std::ostream& out)
  {
 	using namespace std;
 
 	out << "c free vars: " << freevars << endl;
 	out << "p cnf " << vars + freevars << " " << clauses.size() << endl;
 
-	if(mode == Instance::MC)
+	if(!weighted && !projected)
 		out << "c t mc" << endl;
-	else if(mode == Instance::WMC)
+	else if(weighted && !projected)
 		out << "c t wmc" << endl;
-	else if(mode == Instance::PMC)
+	else if(!weighted && projected)
 		out << "c t pmc" << endl;
-	else if(mode == Instance::WPMC)
+	else if(weighted && projected)
 		out << "c t wpmc" << endl;
 
 	if(projected) {
@@ -238,3 +228,6 @@ void Instance::reflectMode(Mode mode) {
 	}
 	*/
 }
+
+template class GPMC::Instance<mpz_class>;
+template class GPMC::Instance<mpfr::mpreal>;

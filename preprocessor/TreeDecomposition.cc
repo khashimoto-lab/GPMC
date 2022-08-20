@@ -12,6 +12,31 @@
 using namespace std;
 
 // Graph
+Graph::Graph(int vars, const vector<vector<Glucose::Lit>>& clauses)
+{
+	clear();
+	init(vars);
+	for(const auto& clause : clauses)
+		for(int i=0; i<clause.size(); i++)
+			for(int j=i+1; j<clause.size(); j++)
+				addEdge(var(clause[i]), var(clause[j]));
+}
+Graph::Graph(int vars, const vector<vector<Glucose::Lit>>& clauses, const vector<vector<Glucose::Lit>>& learnts, vector<int>& freq)
+{
+	clear();
+	init(vars);
+	freq.resize(vars*2, 0);
+
+	for(const auto& cls : {clauses, learnts}) {
+		for(const auto& clause : cls) {
+			for(int i=0; i<clause.size(); i++) {
+				freq[toInt(clause[i])]++;
+				for(int j=i+1; j<clause.size(); j++)
+					addEdge(var(clause[i]), var(clause[j]));
+			}
+		}
+	}
+}
 void Graph::init(int n)
 {
 	nodes = n;
