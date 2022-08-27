@@ -9,16 +9,26 @@
 
 namespace GPMC {
 
+// values for variable map
+const Glucose::Var var_Determined = {-2};
+
 template <class T_data>
 class Instance {
 public:
 	Instance();
 
-	void load			(std::istream& in, bool weighted, bool projected);
+	void load			(std::istream& in, bool weighted, bool projected, bool ddnnf);
 	bool addClause	(std::vector<Glucose::Lit>& lits, bool learnt=false);
 
 	Glucose::lbool value (Glucose::Var x) const;
 	Glucose::lbool value (Glucose::Lit p) const;
+
+	// variable correspondence
+	void printVarMapStats() const;
+	void writeVarMap(std::ostream& out);
+
+	// import extra var score
+	void importVarScore(std::istream& in);
 
 	// For Debug
 	void toDimacs(std::ostream& out);
@@ -38,6 +48,7 @@ public:
 	// For PMC/WPMC
 	int npvars;
 	std::vector<bool> ispvars;
+	std::vector<Glucose::Var> pvars;
 
 	// Instance keeps temporal fixed literals. Preprocessor will eliminate fixed variables.
 	std::vector<Glucose::lbool>	assigns;
@@ -46,6 +57,16 @@ public:
 	// additional information
 	int freevars;
 	T_data gweight;
+
+	// information about correspondence with a given CNF
+	bool keepVarMap;
+	std::vector<Glucose::Lit> gmap;								// variable renaming (original (Var) -> simplified (Lit))
+	std::vector<Glucose::Lit> fixedLits;						// fixed Literals
+	std::vector<Glucose::Var> definedVars;						// variables defined by the other variables
+	std::vector<std::vector<Glucose::Lit>> freeLitClasses;	// equivalence classes of free literals
+
+	// extra var score
+	std::vector<double> score;
 
 	// State
 	bool unsat;

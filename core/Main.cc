@@ -110,7 +110,7 @@ static void SIGINT_exit(int signum) {
 
 static void SetSigAct() {
 	signal(SIGINT,  SIGINT_interrupt);  //  2, SIGINT
-	signal(SIGABRT, SIGINT_exit);       //  6, SIGABRT
+	// signal(SIGABRT, SIGINT_exit);       //  6, SIGABRT
 	signal(SIGSEGV, SIGINT_exit);       // 11, SIGSEGV
 	signal(SIGTERM, SIGINT_interrupt);  // 15, SIGTERM
 	signal(SIGXCPU, SIGINT_exit);
@@ -169,6 +169,23 @@ static void printResult(bool sat, Mode mode, const mpfr::mpreal& result) {
 		PrintLog10(result);
 	}
 }
+
+template <class T_data>
+static void doDNNF(Counter<T_data>& S) {
+#ifdef DEBUG
+	printf("c o Elapsed time %.2f s\nc o\n", cpuTime()); fflush(stdout);
+	cout << "c o Model counting from d-DNNF" << endl;
+	T_data result = S.mcDDNNF();
+
+	// For Debug.
+	printResult(S.sat, S.config.mode, result);
+#endif
+	if(S.config.nnf_outfile != "NULL") {
+		printf("c o Elapsed time %.2f s\nc o\n", cpuTime()); fflush(stdout);
+		S.writeNNF();
+	}
+}
+
 //=================================================================================================
 // Main:
 template <class T_data>
@@ -182,8 +199,10 @@ void main_mc(Counter<T_data>& S, string filename)
 	else {
 		cout << "c o Reading from the file " << filename << " ..." << endl;
 		std::ifstream in(filename);
-		if (in)
+		if (in) {
 			S.load(in);
+			in.close();
+		}
 		else {
 			std::cerr << "Cannot open file:" << filename << std::endl;
 			exit(1);
@@ -202,8 +221,10 @@ void main_mc(Counter<T_data>& S, string filename)
 
 	if(done) {
 		printf("c o Solved by simplification.\n");
+		S.printStats();
 		printf("c o [Result]\n");
 		printResult(S.sat, S.config.mode, S.getMC());
+		if(S.config.ddnnf) doDNNF(S);
 		return;
 	}
 
@@ -212,8 +233,10 @@ void main_mc(Counter<T_data>& S, string filename)
 	bool suc = S.countModels();
 	S.printStats();
 	printf("c o [Result]\n");
-	if(suc)
+	if(suc) {
 		printResult(S.sat, S.config.mode, S.getMC());
+		if(S.config.ddnnf) doDNNF(S);
+	}
 	else
 		printf("s UNKNOWN\n");
 	fflush(stdout);
@@ -305,8 +328,15 @@ int main(int argc, char** argv)
 	} catch (const std::invalid_argument&) {
 		printf("c o Invalid argument\n");
 		exit(1);
-	} catch (OutOfMemoryException&){
+	} catch (OutOfMemoryException&) {
 		printf("c o INDETERMINATE (out of memory)\n");
 		exit(1);
-	}
+	} catch(std::bad_alloc& err) {
+		printf("c o INDETERMINATE (bad_alloc exception)\n");
+		printf("c o Elapsed time %.2lf s\n", cpuTime());
+		double mem_used = memUsedPeak();
+		if (mem_used != 0)
+			printf("c o Memory used = %.2f MB\n", mem_used);
+		exit(1);
+    }
 }

@@ -62,7 +62,27 @@ Counter<T_data>::Counter(Configuration& config_) :
 	pp.setConfig(config_.pp);
 	cmpmgr.setConfig(config_.cm);
 }
+//=================================================================================================
+// Load instance
+template <typename T_data>
+void Counter<T_data>::load(std::istream& in)
+{
+	ins.load(in, wc, !mc, config.keepVarMap);
 
+	if(config.vs_infile != "NULL") {
+		std::ifstream vin(config.vs_infile);
+		if (vin) {
+			ins.importVarScore(vin);
+			vin.close();
+		}
+		else {
+			std::cerr << "Cannot open file:" << config.vs_infile << std::endl;
+			exit(1);
+		}
+	}
+
+	progress = LOADED;
+}
 //=================================================================================================
 // Preprocessing
 template <typename T_data>
@@ -74,22 +94,37 @@ bool Counter<T_data>::preprocess()
 
 	if(ins.unsat) {
 		npmodels = 0;
-		progress = COMPLETED;
+		if(config.ddnnf) cmpmgr.setRoot(BOTTOM_NODE);
+		progress = COMPLETED_BYPP;
 	}
 	else if (ins.vars == 0) {
-		if(wc)
+		if(wc) {
 			npmodels = ins.gweight;
-		else
+			gweight = ins.gweight;
+		}
+		else {
 			npmodels = ((T_data)1) << ins.freevars;
-		progress = COMPLETED;
+			npvars_isolated = ins.freevars;
+		}
+
+		if(config.ddnnf)
+			cmpmgr.setRoot(TOP_NODE);
+
+		progress = COMPLETED_BYPP;
 	}
 	else {
 		progress = PREPROCESSED;
 		if (config.pp_outfile != "NULL") {
-			ofstream out(config.pp_outfile);
 			printf("c o outputing simplified CNF...");
-			ins.toDimacs(out);
-			printf("done\n");
+			ofstream out(config.pp_outfile);
+			if (out) {
+				ins.toDimacs(out);
+				out.close();
+				printf("done\n");
+			}
+			else {
+				std::cerr << "Cannot open file:" << config.pp_outfile << std::endl;
+			}
 		}
 	}
 
@@ -119,7 +154,7 @@ bool Counter<T_data>::simplify()
 	simpDB_props   = clauses_literals + learnts_literals;   // (shouldn't depend on stats really, but it will do for now)
 
 	simp_dbs++;
-	// simplify_time += cpuTime() - cpu_time;
+	simplify_time += cpuTime() - cpu_time;
 
 	if(simp_dbs >= config.rmvsatcl_threshold)
 		on_simp = false;
@@ -136,8 +171,12 @@ bool Counter<T_data>::countModels()
 		return false;
 	}
 
-	computeTDScore();
-	printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+	if(config.vs_infile == "NULL") {
+		computeTDScore();
+		if(config.doTD) printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+	} else {
+		setGivenVarScore();
+	}
 
 	printf("c o Counting starts ...\n");fflush(stdout);
 	import();
@@ -173,16 +212,18 @@ void Counter<T_data>::count_main()
 		if(decisionLevel() == 0) unitcls.clear();
 
 		CRef confl = propagate();
-		if(wc) {
+		if(config.watchCand) {
 			for(int i = bpos; i < trail.size(); i++){
 				if(var(trail[i]) < npvars && cmpmgr.isDecCand(var(trail[i]))) {
-					cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(trail[i])]);
+					if(wc) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(trail[i])]);
+					if(config.ddnnf) cmpmgr.addLitNode(trail[i]);
 				}
 			}
 		}
 
 		if(confl != CRef_Undef){
 			// CONFLICT
+			if(config.ddnnf) cmpmgr.addNode(BOTTOM_NODE);
 
 			conflicts++;
 			if(conflicts % 5000 == 0 && var_decay < 0.95)
@@ -245,7 +286,7 @@ void Counter<T_data>::count_main()
 						sats++;
 						cmpmgr.topDecision().increaseModels((T_data)1, true);
 						if(!cmpmgr.topComponent().hasPVar())
-							cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),1);
+							cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),1,TOP_NODE);
 						cmpmgr.eraseComponentStackID();
 						cmpmgr.popComponent();
 					}
@@ -279,6 +320,7 @@ void Counter<T_data>::count_main()
 
 		if (on_simp && decisionLevel() <= limlevel && cmpmgr.checkfixedDL() && !simplify()) {
 			cmpmgr.topDecision().increaseModels((T_data)0, false);
+			if(config.ddnnf) cmpmgr.addNode(BOTTOM_NODE);
 			bstate = backtrack();
 			if(bstate == EXIT) break;
 			else { assert(false); abort(); }
@@ -293,7 +335,7 @@ void Counter<T_data>::count_main()
 		}
 
 		// DECIDE A LITERAL FROM TOP COMPONENT
-		Var dec_var = cmpmgr.pickBranchVar(activity, tdscore);
+		Var dec_var = cmpmgr.pickBranchVar(activity, exscore);
 		decisions++;
 
 		newDecisionLevel();
@@ -301,12 +343,17 @@ void Counter<T_data>::count_main()
 
 		Lit dlit = mkLit(dec_var, polarity[dec_var]);
 		uncheckedEnqueue(dlit);
-		if(wc) {
-			cmpmgr.topDecision().setBranchWeight(lit_weight[toInt(dlit)]);
+		if(config.watchCand) {
+			if(wc) cmpmgr.topDecision().setBranchWeight(lit_weight[toInt(dlit)]);
+			if(config.ddnnf) cmpmgr.setDecisionNode(dlit);
 			cmpmgr.setDecCand();
 		}
 	}
 	sat = cmpmgr.topDecision().hasModel();
+	if(config.ddnnf) {
+		cmpmgr.setRoot(cmpmgr.makeBranchNode(UNDEF_VAL)); // abuse makeBranchNode ...
+		cmpmgr.NodeManager().compressANDs();
+	}
 
 	if(wc)
 		npmodels = cmpmgr.topDecision().totalModels() * gweight;
@@ -530,6 +577,7 @@ inline void Counter<T_data>::bjResolve(int level) {
 	cmpmgr.backjumpTo(level);
 	cmpmgr.removeCachePollutions();
 	cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
+	if(config.ddnnf) cmpmgr.removeChildComponentNodes();
 }
 
 template <typename T_data>
@@ -541,7 +589,12 @@ inline btStateT Counter<T_data>::Resolve(int bk_level, CRef cr, Lit lit) {
 		bjResolve(level);
 		if(cr != CRef_Undef) {
 			uncheckedEnqueue(lit, cr);
-			if(wc && var(lit) < npvars && cmpmgr.isDecCand(var(lit))) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(lit)]);
+			if(config.watchCand) {
+				if(var(lit) < npvars && cmpmgr.isDecCand(var(lit))) {
+					if(wc) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(lit)]);
+					if(config.ddnnf) cmpmgr.addLitNode(lit);
+				}
+			}
 		}
 		if(nbackjumps > nPVars()) {
 			on_bj = false;
@@ -550,6 +603,7 @@ inline btStateT Counter<T_data>::Resolve(int bk_level, CRef cr, Lit lit) {
 	}
 	else {
 		cmpmgr.topDecision().increaseModels((T_data)0, false);	// set 0 (no model found at the current branch)
+		if(config.ddnnf) cmpmgr.addNode(BOTTOM_NODE);
 		return backtrack();
 	}
 }
@@ -574,12 +628,20 @@ btStateT Counter<T_data>::backtrack() {
 			limlevel = decisionLevel();
 			cmpmgr.topDecision().changeBranch();
 			if(wc) cmpmgr.topDecision().setBranchWeight(lit_weight[toInt(~dlit)]);
+			if(config.ddnnf) cmpmgr.setDecisionNode(~dlit);
 			return RESOLVED;
 		} else {
 			// SecondBranch
 			cmpmgr.prevDecision().increaseModels(
 					cmpmgr.topDecision().totalModels(), cmpmgr.topDecision().hasModel());
-			cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(), cmpmgr.topDecision().totalModels());
+			NodeIndex snode = UNDEF_NODE;
+			if(config.ddnnf) {
+				Var x = var(trail[trail_lim.last()]);
+				snode = cmpmgr.makeBranchNode(x);
+				if(snode != BOTTOM_NODE)
+					cmpmgr.addNode(snode, cmpmgr.prevDecision().getNodeIdx());
+			}
+			cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(), cmpmgr.topDecision().totalModels(), snode);
 			cmpmgr.eraseComponentStackID();
 
 			cancelCurDL();
@@ -591,6 +653,7 @@ btStateT Counter<T_data>::backtrack() {
 				while (cmpmgr.topDecision().hasUnprocessedSplitComp())
 					cmpmgr.popComponent();
 				cmpmgr.removeCachePollutions();
+				if(config.ddnnf) cmpmgr.addNode(BOTTOM_NODE);
 			} else if (cmpmgr.topDecision().hasUnprocessedSplitComp()) {
 				limlevel = decisionLevel() + 1;
 				return GO_TO_NEXT_COMP;
@@ -800,24 +863,67 @@ template <typename T_data>
 void Counter<T_data>::printStats() const
 {
 	if(verbosity_c) {
-		printf("c o [Statistics]\n");
-		printf("c o conflicts             = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", conflicts, conflicts-conflicts_sg, conflicts_sg);
-		printf("c o decisions             = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", decisions, decisions-decisions_sg, decisions_sg);
-		printf("c o propagations          = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", propagations, propagations-propagations_sg, propagations_sg);
-		printf("c o simp dbs              = %-11"PRIu64" (%.3f s)\n", simp_dbs, simplify_time);
-		printf("c o reduce dbs            = %-11"PRIu64"\n", nbReduceDB);
-		printf("c o learnts (uni/bin/lbd2)= %"PRIu64"/%"PRIu64"/%"PRIu64"\n", nbUn, nbBin, nbDL2);
-		printf("c o last learnts          = %-11d (%"PRIu64" learnts removed, %4.2f%%)\n", learnts.size(), nbRemovedClauses, nbRemovedClauses * 100 / (double)conflicts);
+		if(progress == COMPLETED || progress == FAILED) {
+			printf("c o [Statistics]\n");
+			printf("c o conflicts             = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", conflicts, conflicts-conflicts_sg, conflicts_sg);
+			printf("c o decisions             = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", decisions, decisions-decisions_sg, decisions_sg);
+			printf("c o propagations          = %-11"PRIu64" (count %"PRIu64", sat %"PRIu64")\n", propagations, propagations-propagations_sg, propagations_sg);
+			printf("c o simp dbs              = %-11"PRIu64" (%.3f s)\n", simp_dbs, simplify_time);
+			printf("c o reduce dbs            = %-11"PRIu64"\n", nbReduceDB);
+			printf("c o learnts (uni/bin/lbd2)= %"PRIu64"/%"PRIu64"/%"PRIu64"\n", nbUn, nbBin, nbDL2);
+			printf("c o last learnts          = %-11d (%"PRIu64" learnts removed, %4.2f%%)\n", learnts.size(), nbRemovedClauses, nbRemovedClauses * 100 / (double)conflicts);
 
-		printStatsOfCM();
-		printf("c o isolated_pvars        = %"PRIu64"\n", nIsoPVars());
-		printf("c o SAT calls             = %-11"PRIu64" (SAT %"PRIu64", UNSAT %"PRIu64")\n", solves, sats, solves-sats);
-		printf("c o SAT starts            = %"PRIu64"\n", starts);
-		printf("c o backjumps             = %-11"PRIu64" (sp %"PRIu64") [init %s / final %s]\n", nbackjumps+nbackjumps_sp, nbackjumps_sp, config.backjump ? "on" : "off", on_bj ? "on" : "off");
+			printStatsOfCM();
+			printf("c o isolated_pvars        = %"PRIu64"\n", nIsoPVars());
+			printf("c o SAT calls             = %-11"PRIu64" (SAT %"PRIu64", UNSAT %"PRIu64")\n", solves, sats, solves-sats);
+			printf("c o SAT starts            = %"PRIu64"\n", starts);
+			printf("c o backjumps             = %-11"PRIu64" (sp %"PRIu64") [init %s / final %s]\n", nbackjumps+nbackjumps_sp, nbackjumps_sp, config.backjump ? "on" : "off", on_bj ? "on" : "off");
+			printf("c o\n");
+		}
+		if(config.ddnnf) {
+			printf("c o [d-DNNF Stats]\n");
+			ins.printVarMapStats();
+			const DTNodeManager& nmgr = cmpmgr.NodeManagerConst();
+			nmgr.printStats();
+			printf("c o\n");
+		}
 
-		printf("c o\n");
 		fflush(stdout);
 	}
+}
+
+template <typename T_data>
+void Counter<T_data>::writeNNF() {
+	if(!config.ddnnf) {
+		cout << "c o No d-DNNF is constructed." << endl;
+		return;
+	}
+
+	ofstream out(config.nnf_outfile);
+	if (out) {
+		cout << "c o writing d-DNNF to file " << config.nnf_outfile << " ... "; fflush(stdout);
+		ins.writeVarMap(out);
+		cmpmgr.NodeManager().printNNF(out);
+		cout << "done" << endl;;
+		out.close();
+	}
+	else {
+		cerr << "Cannot open file:" << config.nnf_outfile << endl;
+	}
+}
+
+template <typename T_data>
+T_data Counter<T_data>::mcDDNNF() {
+	if(!config.ddnnf) {
+		cout << "c o No d-DNNF is constructed." << endl;
+		return 0;
+	}
+
+	DTNodeManager& nm = cmpmgr.NodeManager();
+	if(wc)
+		return nm.countModel(lit_weight, wc) * gweight;
+	else
+		return nm.countModel(lit_weight, wc) << nIsoPVars();
 }
 
 //=================================================================================================
@@ -875,13 +981,16 @@ void Counter<T_data>::import()
 template <typename T_data>
 void Counter<T_data>::computeTDScore()
 {
-	tdscore.clear();
-	tdscore.growTo(ins.npvars, 0);
+	exscore.clear();
+	exscore.growTo(ins.npvars, 0);
 
 	if(!config.doTD) return;
 
 	bool conditionOnCNF = ins.vars > 20 && ins.vars <= tdconfig.varlim && ins.learnts.size() <= ins.clauses.size();
-	if(!(conditionOnCNF || config.alwTD)) return;
+	if(!(conditionOnCNF || config.alwTD)) {
+		printf("c o skip td\n");
+		return;
+	}
 
 	Graph Primal(ins.vars, ins.clauses);
 	printf("c o Primal graph: nodes %d, edges %d\n", ins.vars, Primal.numEdges());
@@ -889,7 +998,10 @@ void Counter<T_data>::computeTDScore()
 	bool conditionOnPrimalGraph =
 			(double)Primal.numEdges()/((long) ins.vars * ins.vars) <= tdconfig.denselim
 			&& (double)Primal.numEdges()/ins.vars <= tdconfig.ratiolim;
-	if(!(conditionOnPrimalGraph || config.alwTD)) return;
+	if(!(conditionOnPrimalGraph || config.alwTD)) {
+		printf("c o skip td\n");
+		return;
+	}
 
 	// run FlowCutter
 	printf("c o FlowCutter is running...\n");fflush(stdout);
@@ -906,7 +1018,12 @@ void Counter<T_data>::computeTDScore()
 		// write the the constructed TD (if needed)
 		if(config.td_outfile != "NULL") {
 			ofstream out(config.td_outfile);
-			td.toDimacs(out, centroid+1, ins.npvars);
+			if(out) {
+				td.toDimacs(out, centroid+1, ins.npvars);
+				out.close();
+			} else {
+				std::cerr << "Cannot open file:" << config.td_outfile << std::endl;
+			}
 		}
 
 		bool conditionOnTreeWidth = (double)td.width()/ins.npvars < tdconfig.twvarlim;
@@ -918,7 +1035,7 @@ void Counter<T_data>::computeTDScore()
 					max_dst = max(max_dst, dists[i]);
 				if(max_dst > 0) {
 					for(int i=0; i<ins.npvars; i++)
-						tdscore[i] = config.coef_tdscore * ((double)(max_dst - dists[i])) / (double)max_dst;
+						exscore[i] = config.coef_tdscore * ((double)(max_dst - dists[i])) / (double)max_dst;
 					uselessTD = false;
 				}
 			}
@@ -927,9 +1044,25 @@ void Counter<T_data>::computeTDScore()
 
 	if(uselessTD)
 		printf("c o ignore td\n");
+}
 
-	printf("c o Elapsed time %.2lf s\n", cpuTime());
-	fflush(stdout);
+template <typename T_data>
+void Counter<T_data>::setGivenVarScore() {
+	if(!config.keepVarMap || ins.score.size() == 0) return;
+
+	exscore.clear();
+	exscore.growTo(ins.npvars, 0);
+
+	for(int i=0; i<ins.gmap.size(); i++) {
+		if(ins.gmap[i] == lit_Undef) continue;
+
+		Var x = var(ins.gmap[i]);
+		assert(x < ins.npars);
+		if(exscore[x] < ins.score[i])
+			exscore[x] = ins.score[i];
+	}
+	ins.score.clear();
+	ins.score.shrink_to_fit();
 }
 
 //=================================================================================================

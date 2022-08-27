@@ -148,7 +148,7 @@ uint64_t ComponentCache<T_data>::recompute_bytes_memory_usage() {
 }
 
 template <class T_data>
-bool ComponentCache<T_data>::requestValueOf(Component &comp, T_data &rn) {
+bool ComponentCache<T_data>::requestValueOf(Component &comp, T_data &rn, NodeIndex &node) {
 	CachedComponent<T_data> &packedcomp = entry(comp.id());
 
 	unsigned int v = clip(packedcomp.hashkey());
@@ -166,6 +166,7 @@ bool ComponentCache<T_data>::requestValueOf(Component &comp, T_data &rn) {
 
 			sum_cache_hit_sizes_ += pcomp->num_variables();
 			rn = pcomp->model_count();
+			node = pcomp->get_DTNode();
 			// pcomp->set_creation_time(my_time_);
 			return true;
 		}

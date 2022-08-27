@@ -23,24 +23,27 @@ struct ConfigCounter {
 	bool natw;
 	std::string pp_outfile;
 	std::string td_outfile;
+	std::string nnf_outfile;
 	bool doPreprocss;
 	bool doTD;
 	bool alwTD;
+	bool watchCand;
+	std::string vs_infile;
+	bool keepVarMap;
 };
 
 struct ConfigComponentManager {
 	bool weighted;
+	bool ddnnf;
 	int varSelectionHueristics;
 	int cachesize;
 };
 
 struct ConfigPreprocessor {
-
 	int varlimit;
 	double timelim;
 	double reps;
 	int verb;
-
 
 	// EE
 	bool ee;

@@ -22,12 +22,25 @@ Options:
     - 2 : Projected Model Counting
     - 3 : Weighted Projected Model Counting 
 
+-  -ddnnf  / -no-ddnnf  
+	construct a d-DNNF with a variable mapping (default: off).  
+	The d-DNNF is for the CNF simplified by the preprocessor.  
+	The information about the correspondence between the input and simplified CNF is maintained.
+
+-  -nnfout=\<string\>  
+	write a constructed d-DNNF to the specified file when -ddnnf is set (default: no file output). 
+    The variable correpondance 
+
+-  -natw / -no-natw  
+    use mpz_class as the internal data type for weights when weighted model counting (default: off, use mpfr::mpreal).  
+    Note that we must give natual number weights for each literals in an input file (like "c p weight 1 2 0").
+
+-  -prec=\<1..intmax>  
+    set the precision of floating-point numbers (default: 15).
+
 -  -cs=\<1..intmax>  
     set maximum component cache size (MB) (default: 4000)  
     NOTE: This bound is only for component cache. GPMC may use much more memory.
-
--  -bj / -no-bj  
-    turn on startup limited backjumping (default: on)
 
 ## Input file format
 Input boolean formulas should be in DIMACS CNF format, together with additional information, weights and projection variables.

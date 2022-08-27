@@ -19,6 +19,7 @@ projected(false),
 npvars(0),
 freevars(0),
 gweight(1),
+keepVarMap(false),
 unsat(false)
 {}
 
@@ -43,9 +44,10 @@ static void Tokens(string buf, vector<string>& ret) {
 }
 
 template <class T_data>
-void Instance<T_data>::load(istream& in, bool weighted, bool projected) {
+void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool keepVarMap) {
 	this->weighted = weighted;
 	this->projected = projected;
+	this->keepVarMap = keepVarMap;
 
 	string buf;
 	vector<Lit> ps;
@@ -99,6 +101,8 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected) {
 							if(v-1 >= ispvars.size())
 								ispvars.resize(v, false);
 							ispvars[v-1] = true;
+							if(keepVarMap)
+								pvars.push_back(v-1);
 							npvars++;
 						}
 					}
@@ -116,6 +120,8 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected) {
 						if(v-1 >= ispvars.size())
 							ispvars.resize(v, false);
 						ispvars[v-1] = true;
+						if(keepVarMap)
+							pvars.push_back(v-1);
 						npvars++;
 					}
 				}
@@ -141,6 +147,17 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected) {
 	}
 
 	learnts.clear();
+
+	if(keepVarMap) {
+		gmap.clear();
+		if(projected) {
+			for(auto v : pvars)
+				gmap.push_back(mkLit(v));
+		} else {
+			for(int i=0; i<npvars; i++)
+				gmap.push_back(mkLit(i));
+		}
+	}
 }
 
 template <class T_data>
@@ -173,6 +190,132 @@ bool Instance<T_data>::addClause(vector<Lit>& ps, bool learnt) {
 		copy(ps.begin(), ps.end(), back_inserter(clauses.back()));
 	}
 	return true;
+}
+
+template <class T_data>
+void Instance<T_data>::printVarMapStats() const {
+	cout << "c o #PVars(Original)   " << gmap.size() << endl;
+	cout << "c o #PVars(Simplified) " << npvars << endl;
+	cout << "c o #Fixed_Literals    " << fixedLits.size() << endl;
+	cout << "c o #FreeLitClasses    " << freeLitClasses.size() << endl;
+	cout << "c o #DefinedVars       " << definedVars.size() << endl;
+}
+
+template <class T_data>
+void Instance<T_data>::writeVarMap(std::ostream& out) {
+	using namespace std;
+
+	// c p vmap orignal_vars simplified_vars
+	out << "p vmap " << gmap.size() << " " << npvars << " " << fixedLits.size() << " " << freeLitClasses.size() << " " << definedVars.size() << endl;
+
+	// fixed literals:
+	//  c fix l1 .... ln 0
+	if(fixedLits.size() > 0) {
+		out << "a ";
+		if(projected) {
+			for(Lit l : fixedLits)
+				out << (sign(l)?"-":"") << (pvars[var(l)]+1) << " ";
+		}
+		else {
+			for(Lit l : fixedLits)
+				out << (sign(l)?"-":"") << (var(l)+1) << " ";
+		}
+
+		out << "0" << endl;
+	}
+
+	// free literals classes
+	//	f l1 .... ln 0
+	if(freeLitClasses.size() > 0) {
+		if(projected) {
+			for(auto flc : freeLitClasses) {
+				out << "f ";
+				for(Lit l : flc)
+					out << (sign(l)?"-":"") << (pvars[var(l)]+1) << " ";
+				out << "0" << endl;
+			}
+		} else {
+			for(auto flc : freeLitClasses) {
+				out << "f ";
+				for(Lit l : flc)
+					out << (sign(l)?"-":"") << (var(l)+1) << " ";
+				out << "0" << endl;
+			}
+		}
+	}
+
+	// determined vars
+	//	c det v1 ... vn 0
+	if(definedVars.size() > 0) {
+		out << "d ";
+		if(projected) {
+			for(Var v : definedVars)
+				out << (pvars[v]+1) << " ";
+		}
+		else {
+			for(Var v : definedVars)
+				out << (v+1) << " ";
+		}
+		out << "0" << endl;
+	}
+
+	// var-to-lit renaming:
+	//	v orig_var simplified_lit
+	if(projected) {
+		for(int i=0; i<gmap.size(); i++) {
+			if(gmap[i] != lit_Undef)
+				out << "v " << (pvars[i]+1) << " " << (sign(gmap[i])?"-":"") << (var(gmap[i])+1) << endl;
+		}
+	}
+	else {
+		for(int i=0; i<gmap.size(); i++)
+			if(gmap[i] != lit_Undef)
+				out << "v " << (i+1) << " " << (sign(gmap[i])?"-":"") << (var(gmap[i])+1) << endl;;
+	}
+}
+
+template <typename T_data>
+void Instance<T_data>::importVarScore(std::istream& in) {
+	score.clear();
+	score.resize(npvars, 0);
+
+	vector<Glucose::Var> rvmap;
+	if(projected) {
+		rvmap.clear();
+		rvmap.resize(vars, -1);
+		for(int i=0; i<pvars.size(); i++)
+			rvmap[pvars[i]] = i;
+	}
+
+	// parse
+	vector<string> tokens;
+	string buf;
+	int var;
+	while (getline(in, buf)) {
+		if (buf.empty()) continue;
+		tokens.clear();
+		Tokens(buf, tokens);
+
+		if(tokens.size() == 0) continue;
+		if(tokens.size() != 2) {
+ 			cerr << "c c Parse Error! Invalid line in the given varscore file!" << endl;
+ 			exit(1);
+		}
+		else {
+			int var = stoi(tokens[0])-1;
+			double s = stod(tokens[1]);
+
+			assert(var <= vars);
+			if(0 <= var && var > vars) {
+				cerr << "c c Parse Error! Invalid line in the given varscore file!" << endl;
+				exit(1);
+			}
+			if(projected)
+				score[rvmap[var]] = s;
+			else
+				score[var] = s;
+		}
+	}
 }
 
 // For Debug

@@ -16,6 +16,9 @@ static BoolOption		opt_simp		(omain, "rmvsatcl", "Remove satisfied clauses", tru
 static IntOption		opt_simp_thd	(omain, "rmvsatclthd", "Threshold of removing satisfied clauses", 2, IntRange(0,INT32_MAX));
 static DoubleOption	opt_coef		(omain, "coef", "TDscore coefficient", 100, DoubleRange(0, true, 10000000, true));
 static BoolOption		opt_natw		(omain, "natw", "Natural number weight. If off, real number weight ([0, 1])", false);
+static BoolOption		opt_ddnnf		(omain, "ddnnf", "Constructing a d-DNNF", false);
+static StringOption	opt_nnfout		(omain, "nnfout", "Outfile for d-DNNF", "NULL");
+static StringOption	opt_varscore	(omain, "varscore", "Input file for giving scores of variables", "NULL");
 
 static const char* opp = "GPMC -- Preprocessor";
 static StringOption	opt_ppout		(opp, "ppout", "Outfile for Simplified CNF", "NULL");
@@ -58,6 +61,7 @@ static Mode int2Mode(int mode) {
 
 Configuration::Configuration() {
 	cntr.mode = int2Mode(opt_mode);
+	cntr.ddnnf = opt_ddnnf;
 	cntr.precision = opt_precision;
 	cntr.coef_tdscore = opt_coef;
 	cntr.backjump = opt_bj;
@@ -67,10 +71,16 @@ Configuration::Configuration() {
 	cntr.natw = opt_natw;
 	cntr.pp_outfile = opt_ppout;
 	cntr.td_outfile = opt_tdout;
+	cntr.nnf_outfile = opt_nnfout;
 	cntr.doTD = opt_td || opt_alwtd;
 	cntr.alwTD = opt_alwtd;
+	cntr.watchCand = (opt_mode == WMC || opt_mode == WPMC || opt_ddnnf);
+	cntr.vs_infile = opt_varscore;
+	cntr.keepVarMap = opt_ddnnf || (cntr.vs_infile != "NULL");
+
 
 	cm.weighted = (opt_mode == WMC || opt_mode == WPMC);
+	cm.ddnnf = opt_ddnnf;
 	cm.varSelectionHueristics = opt_vs;
 	cm.cachesize = opt_cachesize;
 
