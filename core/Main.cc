@@ -235,6 +235,7 @@ void main_mc(Counter<T_data>& S, string filename)
 	printf("c o [Result]\n");
 	if(suc) {
 		printResult(S.sat, S.config.mode, S.getMC());
+		counter = NULL;
 		if(S.config.ddnnf) doDNNF(S);
 	}
 	else
