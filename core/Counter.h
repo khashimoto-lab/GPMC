@@ -6,15 +6,16 @@
 #include "core/Config.h"
 #include "core/Instance.h"
 #include "preprocessor/Preprocessor.h"
+#include "ddnnf/DecisionTree.h"
 
 using namespace Glucose;
 
 namespace GPMC {
 
-#define GPMC_VERSION "gpmc-1.1"
+#define GPMC_VERSION "gpmc-1.1.1"
 
 enum progressT {
-	INIT, LOADED, PREPROCESSED, COMPLETED, FAILED
+	INIT, LOADED, PREPROCESSED, COMPLETED_BYPP, COMPLETED, FAILED
 };
 
 enum btStateT {
@@ -31,12 +32,14 @@ public:
 
 	// Methods
 	//
-	void load(std::istream& in) { ins.load(in, wc, !mc); progress = LOADED; }
-														// load an input instance
+	void load(std::istream& in); 					// load an input instance
 	bool preprocess();								// preprocessing for simplification
 	bool countModels();		    					// main count method
 	void printStats() const;							// print statistics
 	const T_data& getMC() { return npmodels; }	// get the computed count
+
+	void writeNNF();
+	T_data mcDDNNF();
 
 	int nPVars() const;				// The number of non-isolated projection variables
 	int nIsoPVars() const;			// The number of isolated projection variables
@@ -68,6 +71,9 @@ protected:
 
 	// compute var score from tree decomposition
 	void computeTDScore();
+
+	// set extra var score from file (from ins.score, consistently with ins.gmap)
+	void setGivenVarScore();
 
 	/// count main method
 	void count_main();
@@ -110,7 +116,7 @@ protected:
 	vec<T_data> lit_weight;	// literal weight
 	T_data gweight;			// global weight
 
-	vec<double> tdscore;		// extra score for variable selection
+	vec<double> exscore;		// extra score for variable selection
 
 	bool on_bj;				// limited bachjump on/off
 	bool on_simp;				// in-processing simplification on/off

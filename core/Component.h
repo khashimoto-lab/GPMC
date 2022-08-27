@@ -4,6 +4,7 @@
 #include "mtl/Alloc.h"
 #include "core/SolverTypes.h"
 #include "core/Config.h"
+#include "ddnnf/DecisionTree.h"
 
 #include <gmpxx.h>
 #include "mpfr/mpreal.h"
@@ -33,12 +34,14 @@ class Decision {
 	bool hasmodel_[2];
 
 	T_data branch_weight_;
+	NodeIndex nodes[2];
 
 public:
 	Decision(int trail_pos, unsigned basecomp) :
 		trail_pos_(trail_pos), cur_branch_(false), basecomp_(basecomp),
 		splitcompFrom_(basecomp + 1), splitcompEnd_(basecomp + 1), models_{ 0, 0 }, hasmodel_{false, false} {
 		branch_weight_ = 1;
+		nodes[0] = nodes[1] = BOTTOM_NODE;
 	}
 
 	int trailPos() {
@@ -115,6 +118,16 @@ public:
 	void mulLitsWeights() {
 		if(hasmodel_[cur_branch_])
 			models_[cur_branch_] *= branch_weight_;
+	}
+
+	NodeIndex getBranchNodeIdx(int branch) {
+		return this->nodes[branch];
+	}
+	NodeIndex getNodeIdx() {
+		return this->nodes[cur_branch_];
+	}
+	void setNodeIdx(NodeIndex node) {
+		this->nodes[cur_branch_] = node;
 	}
 
 	vector<unsigned> dec_cands;
@@ -222,16 +235,19 @@ protected:
 	T_data model_count_;
 	unsigned creation_time_ = 0;
 
+	NodeIndex node_;
+
 public:
-	PackedComponent() {
+	PackedComponent() : node_(UNDEF_NODE){
 	}
 
 	inline PackedComponent(Component& rComp);
 
-	PackedComponent(Component & rComp, const T_data &model_count, unsigned long time) :
+	PackedComponent(Component & rComp, const T_data &model_count, unsigned long time, NodeIndex node) :
 		PackedComponent(rComp) {
 		model_count_ = model_count;
 		creation_time_ = time;
+		node_ = node;
 	}
 
 	~PackedComponent() {
@@ -261,6 +277,13 @@ public:
 	}
 	void set_model_count(const T_data &rn) {
 		model_count_ = rn;
+	}
+
+	NodeIndex get_DTNode() const {
+		return node_;
+	}
+	void set_DTNode(NodeIndex node) {
+		node_ = node;
 	}
 
 	unsigned hashkey() {
@@ -306,8 +329,8 @@ public:
 	CachedComponent() {
 	}
 
-	CachedComponent(Component &comp, const T_data &model_count, unsigned long time) :
-		PackedComponent<T_data>(comp, model_count, time) {
+	CachedComponent(Component &comp, const T_data &model_count, unsigned long time, NodeIndex node) :
+		PackedComponent<T_data>(comp, model_count, time, node) {
 	}
 
 	CachedComponent(Component &comp) :
@@ -455,11 +478,11 @@ public:
 	}
 
 	// store the number in model_count as the model count of CacheEntryID id
-	inline void storeValueOf(CacheEntryID id, const T_data &model_count);
+	inline void storeValueOf(CacheEntryID id, const T_data &model_count, NodeIndex node=UNDEF_NODE);
 
 	// check if the cache contains the modelcount of comp
 	// if so, return true and out_model_count contains that model count
-	bool requestValueOf(Component &comp, T_data &out_model_count);
+	bool requestValueOf(Component &comp, T_data &out_model_count, NodeIndex &node);
 
 	bool deleteEntries();
 	void deleteallentries();
@@ -547,6 +570,7 @@ class ComponentManager {
 	vector<Component*> comp_stack_;
 
 	ComponentCache<T_data> cache_;
+	DTNodeManager nodeMgr;
 
 	ConfigComponentManager config;
 
@@ -570,7 +594,7 @@ public:
 
 	int splitComponent(const vec<lbool>& assigns, const vec<T_data>& lit_weight = {});
 
-	Var pickBranchVar(const vec<double>& activity, const vec<double>& tdscore);
+	Var pickBranchVar(const vec<double>& activity, const vec<double>& exscore);
 
 	// Decision Stack
 	Decision<T_data>& topDecision() {
@@ -617,9 +641,9 @@ public:
 		return cache_;
 	}
 
-	void cacheModelCountOf(unsigned stack_comp_id, const T_data &value) {
+	void cacheModelCountOf(unsigned stack_comp_id, const T_data &value, NodeIndex node) {
 		//if (config_.perform_component_caching && (config_.perform_component_caching_in_sat || !isNotCounting()))
-		cache_.storeValueOf(stack_comp_id, value);
+		cache_.storeValueOf(stack_comp_id, value, node);
 	}
 	void removeCachePollutions();
 	void eraseComponentStackID() {
@@ -628,8 +652,12 @@ public:
 	}
 
 	void backjumpTo(int level) {
-		while (dl_.size() > (unsigned) level + 1)
+		while (dl_.size() > (unsigned) level + 1) {
+			if(config.ddnnf)
+				for(auto i : {0,1})
+					nodeMgr.deleteNodes(dl_.back().getBranchNodeIdx(i));
 			popDecision();
+		}
 		while (comp_stack_.size() > dl_.back().baseComp() + 1)
 			popComponent();
 		dl_.back().setSplitCompsEnd(comp_stack_.size());
@@ -665,6 +693,16 @@ public:
 		}
 		return false;
 	}
+
+	void setRoot(NodeIndex node) { nodeMgr.setRoot(node); }
+	void setDecisionNode(Lit l);
+	void addNode(NodeIndex node) { addNode(node, dl_.back().getNodeIdx()); }
+	void addNode(NodeIndex node, NodeIndex to);
+	void addLitNode(Lit l) { addNode(nodeMgr.Literal(l)); }
+	NodeIndex makeBranchNode(Var x);
+	void removeChildComponentNodes();
+	DTNodeManager& NodeManager() { return nodeMgr; }
+	const DTNodeManager& NodeManagerConst() const { return nodeMgr; }
 
 protected:
 	bool isPVar(Var v) {
@@ -804,6 +842,8 @@ PackedComponent<T_data>::PackedComponent(Component &rComp) {
 	*p = 0;
 	*(p + 1) = 0;	// added by k-hasimt
 	hashkey_ = hashkey_vars + (((unsigned long) hashkey_clauses) << 16);
+
+	node_ = UNDEF_NODE;
 }
 
 template <class T_data>
@@ -882,7 +922,7 @@ void ComponentCache<T_data>::removeFromDescendantsTree(CacheEntryID id) {
 }
 
 template <class T_data>
-void ComponentCache<T_data>::storeValueOf(CacheEntryID id, const T_data &model_count) {
+void ComponentCache<T_data>::storeValueOf(CacheEntryID id, const T_data &model_count, NodeIndex node) {
 	CacheBucket<T_data> &bucket = at(clip(entry(id).hashkey()));
 	// when storing the new model count the size of the model count
 	// and hence that of the component will change
@@ -890,6 +930,7 @@ void ComponentCache<T_data>::storeValueOf(CacheEntryID id, const T_data &model_c
 
 	entry(id).set_model_count(model_count);
 	entry(id).set_creation_time(my_time_);
+	entry(id).set_DTNode(node);
 	bucket.push_back(id);
 	cache_bytes_memory_usage_ += entry(id).SizeInBytes();
 }

@@ -60,6 +60,8 @@ void ComponentManager<T_data>::init(int nvars, int npvars, const vec<CRef>& scla
 	CachedComponent<T_data>::adjustPackSize(nvars, clauses_.size());
 #endif
 
+	nodeMgr.init(npvars_);
+
 	initComponentStack(nvars, clauses_.size());
 	initDecisionStack();
 
@@ -91,12 +93,14 @@ void ComponentManager<T_data>::initDecisionStack()
 	dl_.clear();
 	dl_.push_back(Decision<T_data>(0,0));
 	dl_.back().changeBranch();
+	dl_.back().setNodeIdx(nodeMgr.newNode(DT_AND));
 }
 
 template <typename T_data>
 int ComponentManager<T_data>::splitComponent(const vec<lbool>& assigns, const vec<T_data>& lit_weight){
 	int p; Var v; ClID c;
 	T_data tmp_model_count;
+	NodeIndex cachedNode = UNDEF_NODE;
 
 	unsigned oldtop = comp_stack_.size();
 	unsigned boundary = oldtop;
@@ -124,6 +128,8 @@ int ComponentManager<T_data>::splitComponent(const vec<lbool>& assigns, const ve
 						dl_.back().increaseModels(lit_weight[toInt(mkLit(v, true))]+lit_weight[toInt(mkLit(v, false))], true);
 					else
 						dl_.back().increaseModels((T_data)2, true);
+
+					if(config.ddnnf) addNode(nodeMgr.getDCNode(v));
 				}
 				else
 					dl_.back().increaseModels((T_data)1, true);
@@ -156,8 +162,11 @@ int ComponentManager<T_data>::splitComponent(const vec<lbool>& assigns, const ve
 					comp_stack_.back()->set_id(id);
 					assert(cache_.hasEntry(id));
 					assert(cache_.hasEntry(targetcomp.id()));
-					if (cache_.requestValueOf(*comp_stack_.back(), tmp_model_count)) {
+					if (cache_.requestValueOf(*comp_stack_.back(), tmp_model_count, cachedNode)) {
 						dl_.back().increaseModels(tmp_model_count, true);
+						if(config.ddnnf && cachedNode != TOP_NODE) {
+							addNode(cachedNode);
+						}
 						cache_.eraseEntry(id);
 						delete comp_stack_.back();
 						comp_stack_.pop_back();
@@ -251,7 +260,7 @@ void ComponentManager<T_data>::searchComponent(Var seed_var, const vec<lbool>& a
 }
 
 template <class T_data>
-Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const vec<double>& tdscore)
+Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const vec<double>& exscore)
 {
 	// GPMC uses the lexicographical order of var_frequency and activity for choosing a decision var.
 	// ToDo: try other heuristics
@@ -267,7 +276,7 @@ Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const v
 	if(config.varSelectionHueristics == 0) {
 		int p;
 		for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
-			double score_f = var_frequency_[c[p]] + tdscore[c[p]];
+			double score_f = var_frequency_[c[p]] + exscore[c[p]];
 			double score_a = activity[c[p]];
 			if( score_f > max_score_f) {
 				max_score_f = score_f;
@@ -283,7 +292,7 @@ Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const v
 		double max_score_td = -1;
 		int p;
 		for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
-			double score_td = tdscore[c[p]];
+			double score_td = exscore[c[p]];
 			double score_f = var_frequency_[c[p]];
 			double score_a = activity[c[p]];
 
@@ -314,6 +323,67 @@ void ComponentManager<T_data>::removeCachePollutions() {
 	assert(topDecision().baseComp() == comp_stack_.size()-1);
 	cache_.cleanAllDescendantsOf(comp_stack_.back()->id());
 	// cache_.cleanPollutionsInvolving(comp_stack_.back()->id());
+}
+
+template <class T_data>
+void ComponentManager<T_data>::setDecisionNode(Lit l)
+{
+	NodeIndex n = nodeMgr.newNode(DT_AND);
+	nodeMgr.addEdge(n, nodeMgr.Literal(l));
+	dl_.back().setNodeIdx(n);
+}
+template <class T_data>
+void ComponentManager<T_data>::addNode(NodeIndex x, NodeIndex to)
+{
+	assert(x != nullptr && !nodeMgr.isTop(x));
+
+	NodeIndex n = to;
+
+	if(x == BOTTOM_NODE) {
+		nodeMgr.deleteNodes(n);
+		dl_.back().setNodeIdx(BOTTOM_NODE);
+	}
+	else {
+		nodeMgr.addEdge(n, x);
+	}
+}
+template <class T_data>
+NodeIndex ComponentManager<T_data>::makeBranchNode(Var x)
+{
+	NodeIndex nodes[2];
+	for(auto branch : {0, 1}) {
+		NodeIndex n = nodes[branch] = dl_.back().getBranchNodeIdx(branch);
+
+		if(n != BOTTOM_NODE) {
+			DTNode& v = nodeMgr.Node(n);
+			assert(v.Type() == DT_AND);
+			if(v.Children().size() == 1) {
+				// remove a trivial AND Node
+				nodes[branch] = v.Children()[0];
+				nodeMgr.delEdge(n, v.Children()[0]);
+				nodeMgr.removeNode(n);
+			}
+		}
+	}
+
+	return nodeMgr.OR(x, nodes[0], nodes[1]);
+}
+template <class T_data>
+void ComponentManager<T_data>::removeChildComponentNodes()
+{
+	NodeIndex node = dl_.back().getNodeIdx();
+	vector<NodeIndex>& children = nodeMgr.Node(node).Children();
+	for(int i=children.size()-1; i>=0; i--) {
+		DT_NodeType t = nodeMgr.Node(children[i]).Type();
+		if(t == DT_AND || t == DT_OR || t == DT_DC) {
+			std::swap(children[i], children.back());
+			nodeMgr.delEdge(node, children.back());
+			if(nodeMgr.Node(children.back()).Parents().size() == 0) {
+				nodeMgr.deleteNodes(children.back());
+				children.pop_back();
+			}
+		}
+	}
 }
 
 template class GPMC::ComponentManager<mpz_class>;

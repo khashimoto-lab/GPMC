@@ -3,6 +3,8 @@
 #include "lib_sharpsat_td/subsumer.hpp"
 #include "TestSolver.h"
 
+#include <unordered_map>
+
 using std::swap;
 
 using namespace PPMC;
@@ -114,6 +116,7 @@ bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
 			break;
 	}
 
+	int learnts = ins->learnts.size();
 	for(int i=ins->learnts.size()-1; i>=0; i--) {
 		vector<Lit>& clause = ins->learnts[i];
 		if(clause.size() > 3)
@@ -121,6 +124,18 @@ bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
 	}
 	if(cpuTime() < config.timelim)
 		SAT_FLE();
+
+	if(learnts * 3 / 2 < ins->learnts.size()) {
+		if(ins->vars > 0) {
+			int m = ins->clauses.size()/ins->vars;
+			int len = std::max(m+1, 3);
+			for(int i=ins->learnts.size()-1; i>=0; i--) {
+				vector<Lit>& clause = ins->learnts[i];
+				if(clause.size() > len)
+					sspp::SwapDel(ins->learnts, i);
+			}
+		}
+	}
 
 	printCNFInfo("Simp");
 
@@ -345,6 +360,15 @@ bool Preprocessor<T_data>::MergeAdjEquivs()
 		RewriteClauses(ins->clauses, map);
 		RewriteClauses(ins->learnts, map);
 
+		// update the variable map
+		if(ins->keepVarMap) {
+			for(int i=0; i<ins->gmap.size(); i++) {
+				Lit l = ins->gmap[i];
+				if(l == lit_Undef) continue;
+				ins->gmap[i] = map[toInt(l)];
+			}
+		}
+
 		subsump = true;
 	}
 
@@ -397,18 +421,19 @@ bool Preprocessor<T_data>::VariableEliminate(bool dve)
 		// Here we abuse Compact, assuming that deleted vars was assigned.
 		// We can assume that the deleted vars are non-projected vars or the counting mode is not a weighted one.
 		assert(lastidx <= vars.size());
+		vars.resize(lastidx);
 		for(int i = 0; i < lastidx; i++) {
 			Var v = vars[i];
 			if(cassign[v] == l_Undef)
 				cassign[v] = l_True;			// just want to treat v as not a free variable and eliminate...
 		}
 
-		Compact(cassign);
+		Compact(cassign, vars);
 		Subsume();
 
 		times++;
 		if(times % 1000 == 0 && config.verb >= 1)
-			printCNFInfo("*VE");
+			printCNFInfo(dve ? "DefVE" : "VE");
 		if(ins->clauses.size() > origclssz) break;
 	}
 
@@ -435,8 +460,6 @@ void Preprocessor<T_data>::pickVars(vector<Var>& vars)
 	Graph G(ins->vars, ins->clauses, ins->learnts, freq);
 
 	for(int i=ins->npvars; i<ins->vars; i++) {	// for only projected vars
-		if(min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) == 0)
-			continue;
 		if(isVECandidate(G, freq, i))
 			vars.push_back(i);
 	}
@@ -458,7 +481,6 @@ void Preprocessor<T_data>::pickDefVars(vector<Var>& vars)
 		int count = 0;
 		for(int i=0; i<ins->npvars; i++) {
 			map[i] = i;
-			if(min(freq[toInt(mkLit(i))], freq[toInt(~mkLit(i))]) == 0) continue;
 
 			if(isVECandidate(G, freq, i)) {
 				if(ins->weighted && ins->lit_weights[toInt(mkLit(i))]!=ins->lit_weights[toInt(~mkLit(i))])
@@ -624,7 +646,7 @@ int Preprocessor<T_data>::ElimVars(const vector<Var>& vars)
 static inline lbool val(const vec<lbool>& assigns, Lit p) { return assigns[var(p)] ^ sign(p); }
 
 template <class T_data>
-void Preprocessor<T_data>::Compact(const vec<lbool>& assigns)
+void Preprocessor<T_data>::Compact(const vec<lbool>& assigns, const vector<Var>& elimvars)
 {
 	int varnum = 0;
 	vector<bool> occurred;
@@ -639,7 +661,13 @@ void Preprocessor<T_data>::Compact(const vec<lbool>& assigns)
 	vector<Var> map;
 	vector<Var> nonpvars;
 
-	map.resize(ins->vars);
+	map.clear();
+	map.resize(ins->vars, var_Undef);
+	if(ins->keepVarMap)
+		for(auto v : elimvars)
+			if(v < ins->npvars)
+				map[v] = GPMC::var_Determined;
+
 	nonpvars.reserve(ins->vars-ins->npvars);
 
 	vector<T_data> lit_weights2;
@@ -687,6 +715,43 @@ void Preprocessor<T_data>::Compact(const vec<lbool>& assigns)
 	// Replace literals according to map
 	RewriteClauses(ins->clauses, map);
 	RewriteClauses(ins->learnts, map);
+
+	// update the variable map
+	if(ins->keepVarMap) {
+		std::unordered_map<Glucose::Var, int> table;
+
+		for(int i=0; i<ins->gmap.size(); i++) {
+			Lit l = ins->gmap[i];
+			if(l == lit_Undef) continue;
+
+			Var x = var(ins->gmap[i]);
+			if(assigns[x] == l_Undef) {
+				Var newv = map[var(l)];
+				if(newv >= 0) {
+					ins->gmap[i] = mkLit(newv, sign(l));
+				} else {
+					assert(newv == var_Undef);
+					auto itr = table.find(x);
+					if(itr == table.end()) {
+						table[x] = ins->freeLitClasses.size();
+						ins->freeLitClasses.push_back({mkLit(i, sign(l))});
+					} else {
+						ins->freeLitClasses[itr->second].push_back(mkLit(i, sign(l)));
+					}
+					ins->gmap[i] = lit_Undef;
+				}
+			}
+			else if(map[var(l)] == GPMC::var_Determined) {
+				ins->definedVars.push_back(i);
+				ins->gmap[i] = lit_Undef;
+			}
+			else {
+				bool lsign = ((assigns[x] == l_False) != sign(l));
+				ins->fixedLits.push_back(mkLit(i, lsign));
+				ins->gmap[i] = lit_Undef;
+			}
+		}
+	}
 
 	ins->assignedLits.clear();
 }

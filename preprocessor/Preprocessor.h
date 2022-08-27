@@ -57,7 +57,7 @@ private:
 	void pickDefVars(std::vector<int>& vars);
 	int ElimVars(const std::vector<Glucose::Var>& del);
 
-	void Compact(const Glucose::vec<Glucose::lbool>& assigns);
+	void Compact(const Glucose::vec<Glucose::lbool>& assigns, const std::vector<Glucose::Var>& elimvars={});
 	void CompactClauses(const Glucose::vec<Glucose::lbool>& assigns, std::vector<std::vector<Glucose::Lit>>& cls, std::vector<bool>& occurred, int& varnum);
 	void RewriteClauses(std::vector<std::vector<Glucose::Lit>>& cls, const std::vector<Glucose::Var>& map);
 	void RewriteClauses(std::vector<std::vector<Glucose::Lit>>& cls, const std::vector<Glucose::Lit>& map);
