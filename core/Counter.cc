@@ -171,14 +171,6 @@ bool Counter<T_data>::countModels()
 		return false;
 	}
 
-	if(config.vs_infile == "NULL") {
-		computeTDScore();
-		if(config.doTD) printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
-	} else {
-		setGivenVarScore();
-	}
-
-	printf("c o Counting starts ...\n");fflush(stdout);
 	import();
 	solves = starts = 0;
 	count_main();
@@ -979,13 +971,20 @@ void Counter<T_data>::import()
 }
 
 template <typename T_data>
-void Counter<T_data>::computeTDScore()
+void Counter<T_data>::setExtraVarScore()
 {
 	exscore.clear();
 	exscore.growTo(ins.npvars, 0);
 
-	if(!config.doTD) return;
+	if(config.vs_infile != "NULL")
+		setGivenVarScore();
+	else if(config.doTD)
+		computeTDScore();
+}
 
+template <typename T_data>
+void Counter<T_data>::computeTDScore()
+{
 	bool conditionOnCNF = ins.vars > 20 && ins.vars <= tdconfig.varlim && ins.learnts.size() <= ins.clauses.size();
 	if(!(conditionOnCNF || config.alwTD)) {
 		printf("c o skip td\n");
@@ -1049,9 +1048,6 @@ void Counter<T_data>::computeTDScore()
 template <typename T_data>
 void Counter<T_data>::setGivenVarScore() {
 	if(!config.keepVarMap || ins.score.size() == 0) return;
-
-	exscore.clear();
-	exscore.growTo(ins.npvars, 0);
 
 	for(int i=0; i<ins.gmap.size(); i++) {
 		if(ins.gmap[i] == lit_Undef) continue;

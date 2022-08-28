@@ -34,6 +34,7 @@ public:
 	//
 	void load(std::istream& in); 					// load an input instance
 	bool preprocess();								// preprocessing for simplification
+	void setExtraVarScore();							// set exscore
 	bool countModels();		    					// main count method
 	void printStats() const;							// print statistics
 	const T_data& getMC() { return npmodels; }	// get the computed count
@@ -69,11 +70,9 @@ protected:
 	void import();
 	void loadWeight();
 
-	// compute var score from tree decomposition
-	void computeTDScore();
-
-	// set extra var score from file (from ins.score, consistently with ins.gmap)
-	void setGivenVarScore();
+	// set extra var scores
+	void computeTDScore();		// compute var score from tree decomposition
+	void setGivenVarScore();		// set extra var score from file (from ins.score, consistently with ins.gmap)
 
 	/// count main method
 	void count_main();

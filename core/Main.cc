@@ -228,8 +228,14 @@ void main_mc(Counter<T_data>& S, string filename)
 		return;
 	}
 
+	// Calculating extra var scores
+	printf("c o Preparing extra variable scores ...\n");
+	S.setExtraVarScore();
+	printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+
 	// Counting
 	counter = (Solver*)&S;
+	printf("c o Counting starts ...\n");fflush(stdout);
 	bool suc = S.countModels();
 	S.printStats();
 	printf("c o [Result]\n");
