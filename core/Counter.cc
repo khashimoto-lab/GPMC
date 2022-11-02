@@ -1053,7 +1053,7 @@ void Counter<T_data>::setGivenVarScore() {
 		if(ins.gmap[i] == lit_Undef) continue;
 
 		Var x = var(ins.gmap[i]);
-		assert(x < ins.npars);
+		assert(x < ins.npvars);
 		if(exscore[x] < ins.score[i])
 			exscore[x] = ins.score[i];
 	}

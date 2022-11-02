@@ -152,10 +152,7 @@ bool Preprocessor<T_data>::SAT_FLE()
 	if(!S.okay())
 		return false;
 
-	if(!S.FailedLiterals())
-		return false;
-
-	if(S.Solve() == l_False) {
+	if(!S.FailedLiterals() || S.Solve() == l_False) {
 		ins->unsat = true;
 		return false;
 	}
