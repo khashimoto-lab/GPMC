@@ -100,6 +100,7 @@ NodeIndex DTNodeManager::getDCNode(Glucose::Var x)
 {
 	NodeIndex dc = DontCare(x);
 	if(Node(dc).Children().size()==0) {
+		Node(dc).reset(DT_DC, x);
 		addEdge(dc, Literal(x, false));
 		addEdge(dc, Literal(x, true));
 		nodes++;
@@ -303,6 +304,8 @@ void DTNodeManager::printNNF(ostream& out)
 		for(NodeIndex j : {Literal(Glucose::mkLit(i)), Literal(~Glucose::mkLit(i))})
 			if(j->Parents().size()>0 || j == root)
 				j->setId(id++);
+			else
+				j->setId(UINT_MAX);
 	}
 
 	out << "nnf " << (nodes+id) << " " << edges << " " << vars << endl;
@@ -311,7 +314,7 @@ void DTNodeManager::printNNF(ostream& out)
 
 	for(int i=0; i<vars; i++) {
 		for(NodeIndex j : {Literal(Glucose::mkLit(i)), Literal(~Glucose::mkLit(i))}) {
-			if(j->Id()>=0)
+			if(j->Id() < UINT_MAX)
 				printNode(j, out);
 			j->setState(checked);
 		}
