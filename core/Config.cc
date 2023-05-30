@@ -34,6 +34,7 @@ static IntOption		opt_dvereps	(opp, "dve_reps", "DefVE: the number of repetition
 static BoolOption		opt_vemore		(opp, "ve_more", "VE: target more variables", true);
 static DoubleOption	opt_dvetimelim(opp, "dve_timelim", "DefVE: time limit", 60.0, DoubleRange(0, true, DBL_MAX, true));
 static BoolOption		opt_cs			(opp, "pp_cs", "Clause Strengthening", true);
+static IntOption		opt_sat_bdj	(opp, "pp_sat_bdj", "conflict budget for the last sat solving", 50000, IntRange(1, INT32_MAX));
 
 static const char* otd = "GPMC -- Tree Decomposition";
 static BoolOption		opt_td			(otd, "td", "Tree Decomposition", true);
@@ -96,6 +97,7 @@ Configuration::Configuration() {
 	pp.ve_more = opt_vemore;
 	pp.dve_timelimit = opt_dvetimelim;
 	pp.cs = opt_cs;
+	pp.confl_budget = opt_sat_bdj;
 
 	td.varlim = opt_td_varlim;
 	td.denselim = opt_td_dlim;

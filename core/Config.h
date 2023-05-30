@@ -45,6 +45,9 @@ struct ConfigPreprocessor {
 	double reps;
 	int verb;
 
+	// SAT
+	int64_t confl_budget;
+
 	// EE
 	bool ee;
 	int ee_varlim;

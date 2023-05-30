@@ -86,7 +86,7 @@ bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
 
 	printCNFInfo("Init", true);
 
-	if(ins->unsat || !SAT_FLE())
+	if(ins->unsat || !SAT_FLE(false))
 		return false;
 
 	if(ins->vars > config.varlimit)
@@ -123,7 +123,7 @@ bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
 			sspp::SwapDel(ins->learnts, i);
 	}
 	if(cpuTime() < config.timelim)
-		SAT_FLE();
+		SAT_FLE(true);
 
 	if(learnts * 3 / 2 < ins->learnts.size()) {
 		if(ins->vars > 0) {
@@ -145,14 +145,15 @@ bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
 }
 
 template <class T_data>
-bool Preprocessor<T_data>::SAT_FLE()
+bool Preprocessor<T_data>::SAT_FLE(bool doSAT)
 {
 	TestSolver S(ins->vars, ins->clauses, ins->learnts, ins->assignedLits);
 
 	if(!S.okay())
 		return false;
 
-	if(!S.FailedLiterals() || S.Solve() == l_False) {
+	Glucose::lbool res = l_Undef;
+	if(!S.FailedLiterals() || (doSAT && ((res = S.Solve(config.confl_budget)) == l_False))) {
 		ins->unsat = true;
 		return false;
 	}
@@ -163,8 +164,18 @@ bool Preprocessor<T_data>::SAT_FLE()
 	sspp::SortAndDedup(ins->learnts);
 	Subsume();
 
-	if(config.verb >= 1)
-		printCNFInfo("SAT_FLE");
+	if(config.verb >= 1) {
+		if(doSAT) {
+			printCNFInfo("FLE_SAT");
+			if(res == l_Undef)
+				printf("c o not yet found a solution\n");
+			else	// res == l_Undef
+				printf("c o SAT\n");
+
+		} else {
+			printCNFInfo("FLE___");
+		}
+	}
 
 	return true;
 }

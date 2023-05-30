@@ -49,7 +49,7 @@ public:
 	bool Simplify(GPMC::Instance<T_data>* ins);
 
 private:
-	bool SAT_FLE();
+	bool SAT_FLE(bool doSAT);
 	bool Strengthen();
 	bool MergeAdjEquivs();
 	bool VariableEliminate(bool dve);

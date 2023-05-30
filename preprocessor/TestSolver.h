@@ -18,7 +18,8 @@ public:
 	void addClauseWith(const std::vector<Glucose::Lit>& ps, bool learnt=false);
 	void resetClauses(std::vector<std::vector<Glucose::Lit>>& clauses);
 
-	Glucose::lbool Solve() { return solve_(); }
+	// Glucose::lbool Solve() { return solve_(); }
+	Glucose::lbool Solve(int64_t conf_budget) { setConfBudget(conf_budget); return solve_(); }
 	Glucose::lbool Solve(const Glucose::vec<Glucose::Lit>& assumptions) { budgetOff(); setConfBudget(clauses.size()*10); return solveLimited(assumptions);}
 
 	bool falsifiedBy(Glucose::Lit l);
