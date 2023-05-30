@@ -649,7 +649,8 @@ TreeDecomposition IFlowCutter::constructTD()
 					test_new_order(chain(compute_greedy_min_degree_order(tail, head), inv_preorder), td);
 				}
 
-				if(node_count < 10000){
+				// if(node_count < 10000){
+				if(node_count < 1000){
 					print_comment("min shortcut heuristic");
 					test_new_order(chain(compute_greedy_min_shortcut_order(tail, head), inv_preorder), td);
 				}
