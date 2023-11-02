@@ -149,10 +149,7 @@ bool Preprocessor<T_data>::SAT_FLE()
 {
 	TestSolver S(ins->vars, ins->clauses, ins->learnts, ins->assignedLits);
 
-	if(!S.okay())
-		return false;
-
-	if(!S.FailedLiterals() || S.Solve() == l_False) {
+	if(!S.okay() || !S.FailedLiterals() || S.Solve() == l_False) {
 		ins->unsat = true;
 		return false;
 	}

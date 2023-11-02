@@ -154,14 +154,14 @@ static void printResult(bool sat, Mode mode, const mpfr::mpreal& result) {
 	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
 	printMode(mode);
 	if(!sat) {
-		printf("c s exact arb int 0\n");
+		printf("c s exact double prec-sci 0\n");
 		printf("c s log10-estimate -inf\n");
 	} else {
 		int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
 		cout.precision(precision);
 		if(precision > 15) {
 			cout << "c o precision " << precision << endl;
-			cout << "c s exact prec-sci " <<  result << endl;
+			cout << "c s exact double prec-sci " <<  result << endl;
 		} else {
 			cout << "c s exact double prec-sci " <<  result << endl;
 		}

@@ -19,7 +19,6 @@ TestSolver::TestSolver(int nvars,
 		addClauseWith(c, true);
 
 	if(!assignedLits.empty()) {
-		CRef confl = propagate();
 		ok = (propagate() == CRef_Undef);
 	}
 }
