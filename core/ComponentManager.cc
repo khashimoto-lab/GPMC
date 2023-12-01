@@ -321,7 +321,7 @@ Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const v
 template <class T_data>
 void ComponentManager<T_data>::removeCachePollutions() {
 	assert(topDecision().baseComp() == comp_stack_.size()-1);
-	cache_.cleanAllDescendantsOf(comp_stack_.back()->id());
+	cache_.cleanAllDescendantsOf(comp_stack_.back()->id(), topDecision().numComps());
 	// cache_.cleanPollutionsInvolving(comp_stack_.back()->id());
 }
 
