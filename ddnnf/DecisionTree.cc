@@ -100,7 +100,7 @@ NodeIndex DTNodeManager::getDCNode(Glucose::Var x)
 {
 	NodeIndex dc = DontCare(x);
 	if(Node(dc).Children().size()==0) {
-		Node(dc).reset(DT_DC, x);
+		Node(dc).reset(DT_DC, x+1);
 		addEdge(dc, Literal(x, false));
 		addEdge(dc, Literal(x, true));
 		nodes++;
