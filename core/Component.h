@@ -30,6 +30,8 @@ class Decision {
 	unsigned splitcompFrom_;	// [From, End)
 	unsigned splitcompEnd_;
 
+	int num_cur_branch_comps;
+
 	T_data models_[2];
 	bool hasmodel_[2];
 
@@ -39,7 +41,7 @@ class Decision {
 public:
 	Decision(int trail_pos, unsigned basecomp) :
 		trail_pos_(trail_pos), cur_branch_(false), basecomp_(basecomp),
-		splitcompFrom_(basecomp + 1), splitcompEnd_(basecomp + 1), models_{ 0, 0 }, hasmodel_{false, false} {
+		splitcompFrom_(basecomp + 1), splitcompEnd_(basecomp + 1), num_cur_branch_comps(0), models_{ 0, 0 }, hasmodel_{false, false} {
 		branch_weight_ = 1;
 		nodes[0] = nodes[1] = BOTTOM_NODE;
 	}
@@ -57,6 +59,7 @@ public:
 	}
 	void changeBranch() {
 		cur_branch_ = true;
+		num_cur_branch_comps = 0;
 	}
 
 	//
@@ -70,6 +73,7 @@ public:
 
 	void setSplitCompsEnd(int end) {
 		splitcompEnd_ = end;
+		num_cur_branch_comps = splitcompEnd_ - splitcompFrom_;
 	}
 	void nextSplitComp() {
 		splitcompEnd_--;
@@ -77,7 +81,9 @@ public:
 	int numUnprocessedSplitComp() {
 		return splitcompEnd_ - splitcompFrom_;
 	}
-
+	int numComps() {
+		return num_cur_branch_comps;
+	}
 	// Methods on models
 	const T_data totalModels() const {
 		return models_[0] + models_[1];
@@ -491,7 +497,7 @@ public:
 	// inline void test_descendantstree_consistency();
 
 	// --- Added by k-hasimt --- BEGIN
-	inline void cleanAllDescendantsOf(CacheEntryID id);
+	inline void cleanAllDescendantsOf(CacheEntryID id, int num_comps);
 
 	void printStats() const {
 		printf("c o Cache lookup          = %"PRIu64"\n", num_cache_look_ups_);
@@ -937,13 +943,16 @@ void ComponentCache<T_data>::storeValueOf(CacheEntryID id, const T_data &model_c
 
 // --- Added by k-hasimt --- BEGIN
 template <class T_data>
-void ComponentCache<T_data>::cleanAllDescendantsOf(CacheEntryID id) {
+void ComponentCache<T_data>::cleanAllDescendantsOf(CacheEntryID id, int comps) {
 	CacheEntryID next_child = entry(id).first_descendant();
-	while (next_child) {
+	int remainings = comps;
+	while (next_child && remainings > 0) {
 		CacheEntryID act_child = next_child;
 		next_child = entry(act_child).next_sibling();
 		cleanPollutionsInvolving(act_child);
+		remainings--;
 	}
+	assert(remainings == 0);
 }
 // --- Added by k-hasimt --- END
 
