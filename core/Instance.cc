@@ -57,6 +57,8 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 	npvars = 0;
 	ispvars.clear();
 
+	vector<bool> set_weight;
+
 	while (getline(in, buf)) {
 		if (buf.empty()) continue;
 		tokens.clear();
@@ -79,8 +81,10 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 					npvars = vars;
 				}
 
-				if(weighted)
+				if(weighted) {
+					set_weight.resize(2*vars, false);
 					lit_weights.resize(2*vars, 1);
+				}
 			}
 			else
 				cerr << "c c Header Error!" << endl;
@@ -92,6 +96,7 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 						int lit = stoi(tokens[3]);
 						Lit l = SignedIntToLit(lit);
 						lit_weights[toInt(l)] = tokens[4];
+						set_weight[toInt(l)] = true;
 					}
 				}
 				else if(tokens[2] == "show") { // Read the list of projected vars
@@ -147,6 +152,31 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 	}
 
 	learnts.clear();
+
+	if(weighted) {
+		for(int v = 0; v < npvars; v++) {
+			for(auto lit : {mkLit(v), ~mkLit(v)}) {
+				if(!set_weight[toInt(lit)] && set_weight[toInt(~lit)]) {
+					if(0 < lit_weights[toInt(~lit)] && lit_weights[toInt(~lit)] < 1) {
+						lit_weights[toInt(lit)] = 1 - lit_weights[toInt(~lit)];
+						set_weight[toInt(lit)] = true;
+						cout << "c c Warning: weight(" 	<< (sign(lit) ? "-":"") << (var(lit)+1) << ") is not explicitly given, "
+								<< "we assume that the weight is 1 - weight(" << (sign(lit) ? "":"-") << (var(lit)+1) << ")." << endl;
+						continue;
+					}
+					else if(lit_weights[toInt(~lit)] <= 0) {
+						cerr << "c c Error: weight(" << (sign(lit) ? "-":"") << (var(lit)+1) << ") is not given, "
+								<< "while weight(" << (sign(lit) ? "":"-") << (var(lit)+1) << ") <= 0." << endl;
+						exit(1);
+					}
+				}
+			}
+
+			for(auto lit : {mkLit(v), ~mkLit(v)})
+				if(lit_weights[toInt(lit)] == 0)
+					cout << "c c Warning: The weight of literal " << (sign(lit) ? "-":"") << (var(lit)+1) << " is 0." << endl;
+		}
+	}
 
 	if(keepVarMap) {
 		gmap.clear();

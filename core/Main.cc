@@ -135,7 +135,7 @@ static void printMode(Mode mode) {
 	case MC:	printf("c s type mc\n");break;
 	case WMC:	printf("c s type wmc\n");break;
 	case PMC:	printf("c s type pmc\n");break;
-	case WPMC:	printf("c s type wpmc\n");break;
+	case WPMC:	printf("c s type pwmc\n");break;
 	}
 }
 static void printResult(bool sat, Mode mode, const mpz_class& result) {
@@ -154,7 +154,7 @@ static void printResult(bool sat, Mode mode, const mpfr::mpreal& result) {
 	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
 	printMode(mode);
 	if(!sat) {
-		printf("c s exact double prec-sci 0\n");
+		printf("c s exact arb prec-sci 0\n");
 		printf("c s log10-estimate -inf\n");
 	} else {
 		int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
@@ -280,7 +280,7 @@ int main(int argc, char** argv)
 			  case MC:		printf("c o Mode: Model Counting\n"); break;
 			  case WMC:	printf("c o Mode: Weighted Model Counting\n"); break;
 			  case PMC:	printf("c o Mode: Projected Model Counting\n"); break;
-			  case WPMC:	printf("c o Mode: Weighted Projected Model Counting\n"); break;
+			  case WPMC:	printf("c o Mode: Projected Weighted Model Counting\n"); break;
 			}
 			fflush(stdout);
 		}
