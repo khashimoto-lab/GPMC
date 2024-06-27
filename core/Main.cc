@@ -118,42 +118,23 @@ static void SetSigAct() {
 	signal(SIGXCPU, SIGINT_exit);
 }
 //=================================================================================================
-string mpfr_to_string(mpfr_t& value) {
-    mpfr_exp_t exp;
-    char* str = mpfr_get_str(nullptr, &exp, 10, 15, value, MPFR_RNDN);
-
-    std::string str_std(str);
-    std::string scientific_str;
-
-    if (str_std[0] == '-') {
-       scientific_str = str_std.substr(0,2) + "." + str_std.substr(2);
-
-    } else {
-       scientific_str = str_std.substr(0,1) + "." + str_std.substr(1);
-    }
-
-    if(exp - 1 != 0)
-    	scientific_str += "e" + std::to_string(exp - 1);
-
-    mpfr_free_str(str);
-
-    return scientific_str;
-}
-
 void PrintLog10_MPFR(mpfr_t& mpfr_value, bool neg=false) {
-    mpfr_t mpfr_log10_value;
-    mpfr_init(mpfr_log10_value);
+	char buffer[100];
+    mpfr_t log10_value;
 
-    // Calculate log10 using MPFR
-    mpfr_log10(mpfr_log10_value, mpfr_value, MPFR_RNDN);
+    mpfr_init(log10_value);
+
+    mpfr_log10(log10_value, mpfr_value, MPFR_RNDN);
+
+    mpfr_sprintf(buffer, "%.15Rg", log10_value);
 
     if(!neg)
-    	std::cout << "c s log10-estimate " << mpfr_to_string(mpfr_log10_value) << std::endl;
+    	std::cout << "c s log10-estimate " << buffer << std::endl;
     else
-    	std::cout << "c s neglog10-estimate " << mpfr_to_string(mpfr_log10_value) << std::endl;
+    	std::cout << "c s neglog10-estimate " << buffer << std::endl;
 
     // Clear MPFR variables
-    mpfr_clear(mpfr_log10_value);
+    mpfr_clear(log10_value);
 }
 // Function to print log10 for mpz_class using MPFR
 void PrintLog10(const mpz_class& num) {
@@ -192,29 +173,6 @@ void PrintLog10(const mpq_class& num) {
     mpfr_clear(mpfr_value);
 }
 
-/*
-static void PrintLog10(const mpz_class& num) {
-	mpf_class double_value(num);
-	cout.precision(15);
-	cout << "c s log10-estimate " << fixed << mpf_log10(double_value) << endl;
-}
-static void PrintLog10(const mpq_class& num) {
-	double double_value;
-
-	if(num >=0) {
-		double_value = num.get_d();
-		cout << "c s log10-estimate ";
-	}
-	else {
-		mpq_class abs_num = abs(num);
-		double_value = abs_num.get_d();
-		cout << "c s neglog10-estimate ";
-	}
-
-	cout.precision(15);
-	cout << fixed << log10(double_value) << endl;
-}
-*/
 static void printMode(Mode mode) {
 	switch(mode) {
 	case MC:	printf("c s type mc\n");break;
@@ -251,7 +209,10 @@ static void printResult(bool sat, Mode mode, const mpq_class& result) {
 			mpfr_t result_mpfr;
 			mpfr_init(result_mpfr);
 			mpfr_set_q(result_mpfr, result.get_mpq_t(), MPFR_RNDN);
-			cout << "c s exact arb prec-sci " << mpfr_to_string(result_mpfr) << endl;
+
+		    char buffer[100];
+		    mpfr_sprintf(buffer, "%.15Re", result_mpfr);
+			cout << "c s exact arb prec-sci " << buffer << endl;
 			mpfr_clear(result_mpfr);
 		}
 	}
