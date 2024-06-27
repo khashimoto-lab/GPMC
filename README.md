@@ -63,4 +63,4 @@ The weight of the positive literal of var 2 is 0.6, and that of the negative one
 
 ## Author
 [Kenji Hashimoto](https://www.trs.cm.is.nagoya-u.ac.jp/~k-hasimt/index-e.html),
-Nagoya University, Japan.
+Kagawa University, Japan.

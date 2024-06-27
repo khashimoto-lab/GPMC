@@ -252,7 +252,7 @@ T_data DTNodeManager::countModel(Glucose::vec<T_data>& lit_weight, bool wc)
 	return result;
 }
 template mpz_class DTNodeManager::countModel(Glucose::vec<mpz_class>& lit_weight, bool wc);
-template mpfr::mpreal DTNodeManager::countModel(Glucose::vec<mpfr::mpreal>& lit_weight, bool wc);
+template mpq_class DTNodeManager::countModel(Glucose::vec<mpq_class>& lit_weight, bool wc);
 
 void DTNodeManager::printNode(NodeIndex node, ostream& out) const
 {

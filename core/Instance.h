@@ -5,7 +5,6 @@
 #include "core/SolverTypes.h"
 
 #include <gmpxx.h>
-#include "mpfr/mpreal.h"
 
 namespace GPMC {
 

@@ -95,8 +95,9 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 					if(weighted && tokens.size() == 6 && tokens.back() == "0") {
 						int lit = stoi(tokens[3]);
 						Lit l = SignedIntToLit(lit);
-						lit_weights[toInt(l)] = tokens[4];
+						lit_weights[toInt(l)] = mpf_class(tokens[4]);
 						set_weight[toInt(l)] = true;
+						// cout << "c weight " << tokens[4] << " : " << lit_weights[toInt(l)] << endl;
 					}
 				}
 				else if(tokens[2] == "show") { // Read the list of projected vars
@@ -114,7 +115,7 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 				}
 				else if(tokens[2] == "gweight") {
 					if(weighted && tokens.size() == 5 && tokens.back() == "0") {
-						gweight = tokens[3];
+						gweight = mpf_class(tokens[3]);
 					}
 				}
 			}
@@ -373,12 +374,13 @@ template <class T_data>
 		out << "0" << endl;
 	}
 	if(weighted) {
-		int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
-		out.precision(precision);
+		out.precision(15);
 
 		for (int i=0; i<npvars; i++) {
-			out << "c p weight " << (i+1) << " " << lit_weights[toInt(mkLit(i))] << " 0" << endl;
-			out << "c p weight -" << (i+1) << " " << lit_weights[toInt(~mkLit(i))] << " 0" << endl;
+			out << "c p weight " << (i+1) << " "
+					<< std::fixed << lit_weights[toInt(mkLit(i))].get_d() << " 0" << endl;
+			out << "c p weight -" << (i+1) << " "
+					<< std::fixed  << lit_weights[toInt(~mkLit(i))].get_d() << " 0" << endl;
 		}
 
 		if(gweight != 1) {
@@ -403,4 +405,4 @@ template <class T_data>
 }
 
 template class GPMC::Instance<mpz_class>;
-template class GPMC::Instance<mpfr::mpreal>;
+template class GPMC::Instance<mpq_class>;

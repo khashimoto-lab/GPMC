@@ -387,4 +387,4 @@ void ComponentManager<T_data>::removeChildComponentNodes()
 }
 
 template class GPMC::ComponentManager<mpz_class>;
-template class GPMC::ComponentManager<mpfr::mpreal>;
+template class GPMC::ComponentManager<mpq_class>;

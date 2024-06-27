@@ -1,6 +1,5 @@
 #include <iostream>
 #include <gmpxx.h>
-#include "mpfr/mpreal.h"
 #include "core/Component.h"
 
 // #define USE_SYSINFO
@@ -266,5 +265,6 @@ void PackedComponent<T_data>::adjustPackSize(unsigned int maxVarId, unsigned int
 
 template class GPMC::PackedComponent<mpz_class>;
 template class GPMC::ComponentCache<mpz_class>;
-template class GPMC::PackedComponent<mpfr::mpreal>;
-template class GPMC::ComponentCache<mpfr::mpreal>;
+template class GPMC::PackedComponent<mpq_class>;
+template class GPMC::ComponentCache<mpq_class>;
+

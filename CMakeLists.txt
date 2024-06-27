@@ -28,4 +28,4 @@ target_compile_definitions(gpmc
 
 add_executable(gpmc-bin core/Main.cc)
 set_target_properties(gpmc-bin PROPERTIES OUTPUT_NAME gpmc)
-target_link_libraries(gpmc-bin gpmc flowcutter z mpfr gmp gmpxx $<$<BOOL:${GPMC_STATIC_BUILD}>:-static>)
+target_link_libraries(gpmc-bin gpmc flowcutter z gmpxx gmp $<$<BOOL:${GPMC_STATIC_BUILD}>:-static>)

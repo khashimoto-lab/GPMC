@@ -68,7 +68,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <signal.h>
 #include <zlib.h>
 #include <gmpxx.h>
-#include <mpfr/mpreal.h>
+#include <cmath>
 
 #include "utils/System.h"
 #include "utils/ParseUtils.h"
@@ -116,20 +116,28 @@ static void SetSigAct() {
 	signal(SIGXCPU, SIGINT_exit);
 }
 //=================================================================================================
-static mpfr::mpreal Log10(const mpz_class& num) {
-  assert(num >= 0);
-  if (num == 0) {
-    return -std::numeric_limits<double>::infinity();
-  }
-  mpfr::mpreal num1(num.get_mpz_t());
-  return mpfr::log10(num1);
-}
 static void PrintLog10(const mpz_class& num) {
-  cout<<"c s log10-estimate "<<Log10(num)<<endl;
+	double double_value = num.get_d();
+	cout.precision(15);
+	cout << "c s log10-estimate " << std::scientific << log10(double_value) << endl;
 }
-static void PrintLog10(const mpfr::mpreal& num) {
-  cout<<"c s log10-estimate "<<mpfr::log10(num)<<endl;
+static void PrintLog10(const mpq_class& num) {
+	double double_value;
+
+	if(num >=0) {
+		double_value = num.get_d();
+		cout << "c s log10-estimate ";
+	}
+	else {
+		mpq_class abs_num = abs(num);
+		double_value = abs_num.get_d();
+		cout << "c s neglog10-estimate ";
+	}
+
+	cout.precision(15);
+	cout << std::scientific << log10(double_value) << endl;
 }
+
 static void printMode(Mode mode) {
 	switch(mode) {
 	case MC:	printf("c s type mc\n");break;
@@ -142,34 +150,27 @@ static void printResult(bool sat, Mode mode, const mpz_class& result) {
 	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
 	printMode(mode);
 	if(!sat) {
+		printf("c s log10-estimate -inf\n");
 		printf("c s exact arb int 0\n");
-		printf("c s log10-estimate -inf\n");
 	} else {
+		PrintLog10(result);
 		cout << "c s exact arb int " << result << endl;
-		cout.precision(15);
-		PrintLog10(result);
-	}
-}
-static void printResult(bool sat, Mode mode, const mpfr::mpreal& result) {
-	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
-	printMode(mode);
-	if(!sat) {
-		printf("c s exact arb prec-sci 0\n");
-		printf("c s log10-estimate -inf\n");
-	} else {
-		int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
-		cout.precision(precision);
-		if(precision > 15) {
-			cout << "c o precision " << precision << endl;
-			cout << "c s exact double prec-sci " <<  result << endl;
-		} else {
-			cout << "c s exact double prec-sci " <<  result << endl;
-		}
-		cout.precision(15);
-		PrintLog10(result);
 	}
 }
 
+static void printResult(bool sat, Mode mode, const mpq_class& result) {
+	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
+	printMode(mode);
+	if(!sat || result == 0) {
+		printf("c s log10-estimate -inf\n");
+		printf("c s exact arb float 0\n");
+	} else {
+		PrintLog10(result);
+		cout.precision(15);
+		cout << "c s exact arb float " << std::scientific << result.get_d() << endl;
+		cout << "c s exact arb frac "  << result << endl;
+	}
+}
 template <class T_data>
 static void doDNNF(Counter<T_data>& S) {
 #ifdef DEBUG
@@ -314,10 +315,7 @@ int main(int argc, char** argv)
 			Counter<mpz_class> S(config);
 			main_mc(S, filename);
 		} else {
-			if(config.cntr.precision > 15)
-				mpfr::mpreal::set_default_prec(mpfr::digits2bits(config.cntr.precision));
-
-			Counter<mpfr::mpreal> S(config);
+			Counter<mpq_class> S(config);
 			main_mc(S, filename);
 		}
 
