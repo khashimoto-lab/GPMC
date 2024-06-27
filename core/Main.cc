@@ -144,8 +144,6 @@ void PrintLog10_MPFR(mpfr_t& mpfr_value, bool neg=false) {
     mpfr_t mpfr_log10_value;
     mpfr_init(mpfr_log10_value);
 
-    if(mpfr_value >=0)
-
     // Calculate log10 using MPFR
     mpfr_log10(mpfr_log10_value, mpfr_value, MPFR_RNDN);
 
