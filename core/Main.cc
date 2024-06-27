@@ -68,7 +68,9 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <signal.h>
 #include <zlib.h>
 #include <gmpxx.h>
+#include <mpfr.h>
 #include <cmath>
+#include <iomanip>
 
 #include "utils/System.h"
 #include "utils/ParseUtils.h"
@@ -116,10 +118,87 @@ static void SetSigAct() {
 	signal(SIGXCPU, SIGINT_exit);
 }
 //=================================================================================================
+string mpfr_to_string(mpfr_t& value) {
+    mpfr_exp_t exp;
+    char* str = mpfr_get_str(nullptr, &exp, 10, 15, value, MPFR_RNDN);
+
+    std::string str_std(str);
+    std::string scientific_str;
+
+    if (str_std[0] == '-') {
+       scientific_str = str_std.substr(0,2) + "." + str_std.substr(2);
+
+    } else {
+       scientific_str = str_std.substr(0,1) + "." + str_std.substr(1);
+    }
+
+    if(exp - 1 != 0)
+    	scientific_str += "e" + std::to_string(exp - 1);
+
+    mpfr_free_str(str);
+
+    return scientific_str;
+}
+
+void PrintLog10_MPFR(mpfr_t& mpfr_value, bool neg=false) {
+    mpfr_t mpfr_log10_value;
+    mpfr_init(mpfr_log10_value);
+
+    if(mpfr_value >=0)
+
+    // Calculate log10 using MPFR
+    mpfr_log10(mpfr_log10_value, mpfr_value, MPFR_RNDN);
+
+    if(!neg)
+    	std::cout << "c s log10-estimate " << mpfr_to_string(mpfr_log10_value) << std::endl;
+    else
+    	std::cout << "c s neglog10-estimate " << mpfr_to_string(mpfr_log10_value) << std::endl;
+
+    // Clear MPFR variables
+    mpfr_clear(mpfr_log10_value);
+}
+// Function to print log10 for mpz_class using MPFR
+void PrintLog10(const mpz_class& num) {
+    mpfr_t mpfr_value;
+    mpfr_init(mpfr_value);
+
+    // Set mpfr_value from mpz_class num
+    mpfr_set_z(mpfr_value, num.get_mpz_t(), MPFR_RNDN);
+
+    // Use the common function to print log10
+    PrintLog10_MPFR(mpfr_value);
+
+    // Clear MPFR variable
+    mpfr_clear(mpfr_value);
+}
+
+// Function to print log10 for mpq_class using MPFR
+void PrintLog10(const mpq_class& num) {
+    mpfr_t mpfr_value;
+    mpfr_init(mpfr_value);
+
+    bool neg = (num < 0);
+
+    // Set mpfr_value from mpq_class num
+    if(neg) {
+    	mpq_class abs = -1*num;
+    	mpfr_set_q(mpfr_value, abs.get_mpq_t(), MPFR_RNDN);
+    }
+    else
+    	mpfr_set_q(mpfr_value, num.get_mpq_t(), MPFR_RNDN);
+
+    // Use the common function to print log10
+    PrintLog10_MPFR(mpfr_value, neg);
+
+    // Clear MPFR variable
+    mpfr_clear(mpfr_value);
+}
+
+/*
 static void PrintLog10(const mpz_class& num) {
-	double double_value = num.get_d();
+	mpf_class double_value(num);
 	cout.precision(15);
-	cout << "c s log10-estimate " << std::scientific << log10(double_value) << endl;
+	cout << "c s log10-estimate " << fixed << mpf_log10(double_value) << endl;
 }
 static void PrintLog10(const mpq_class& num) {
 	double double_value;
@@ -135,9 +214,9 @@ static void PrintLog10(const mpq_class& num) {
 	}
 
 	cout.precision(15);
-	cout << std::scientific << log10(double_value) << endl;
+	cout << fixed << log10(double_value) << endl;
 }
-
+*/
 static void printMode(Mode mode) {
 	switch(mode) {
 	case MC:	printf("c s type mc\n");break;
@@ -165,12 +244,21 @@ static void printResult(bool sat, Mode mode, const mpq_class& result) {
 		printf("c s log10-estimate -inf\n");
 		printf("c s exact arb float 0\n");
 	} else {
-		PrintLog10(result);
-		cout.precision(15);
-		cout << "c s exact arb float " << std::scientific << result.get_d() << endl;
-		cout << "c s exact arb frac "  << result << endl;
+		if(result.get_num() == result.get_den()) {
+			printf("c s log10-estimate 0\n");
+			printf("c s exact arb float 1\n");
+		}
+		else{
+			PrintLog10(result);
+			mpfr_t result_mpfr;
+			mpfr_init(result_mpfr);
+			mpfr_set_q(result_mpfr, result.get_mpq_t(), MPFR_RNDN);
+			cout << "c s exact arb prec-sci " << mpfr_to_string(result_mpfr) << endl;
+			mpfr_clear(result_mpfr);
+		}
 	}
 }
+
 template <class T_data>
 static void doDNNF(Counter<T_data>& S) {
 #ifdef DEBUG
@@ -225,6 +313,8 @@ void main_mc(Counter<T_data>& S, string filename)
 		S.printStats();
 		printf("c o [Result]\n");
 		printResult(S.sat, S.config.mode, S.getMC());
+		if(S.config.output_rational)
+			cout << "c s exact arb frac "  << S.getMC() << endl;
 		if(S.config.ddnnf) doDNNF(S);
 		return;
 	}
@@ -242,6 +332,8 @@ void main_mc(Counter<T_data>& S, string filename)
 	printf("c o [Result]\n");
 	if(suc) {
 		printResult(S.sat, S.config.mode, S.getMC());
+		if(S.config.output_rational)
+			cout << "c s exact arb frac "  << S.getMC() << endl;
 		counter = NULL;
 		if(S.config.ddnnf) doDNNF(S);
 	}

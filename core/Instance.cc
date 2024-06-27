@@ -6,6 +6,7 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <regex>
 
 using namespace Glucose;
 using namespace GPMC;
@@ -41,6 +42,84 @@ static void Tokens(string buf, vector<string>& ret) {
 		}
 	}
 	if (ret.back().empty()) ret.pop_back();
+}
+
+mpq_class string_to_mpq(const std::string& str) {
+    // Check for fraction format using regular expression
+    std::regex fraction_pattern(R"(([-+]?\d+)/(\d+))");
+    std::smatch matches;
+
+    // If the format is fraction
+    if (std::regex_match(str, matches, fraction_pattern)) {
+        mpz_class numerator(matches[1].str());
+        mpz_class denominator(matches[2].str());
+        return mpq_class(numerator, denominator);
+    }
+
+    // Check for floating point or scientific notation using regular expression
+    std::regex float_pattern(R"(([-+]?[0-9]*\.?[0-9]+)([eE][-+]?[0-9]+)?)");
+
+    if (std::regex_match(str, matches, float_pattern)) {
+        std::string base_str = matches[1].str();
+        std::string exponent_str = matches[2].str();
+
+        bool is_negative = (base_str[0] == '-');
+        if (is_negative) {
+            base_str = base_str.substr(1);
+        }
+
+        std::string::size_type point_pos = base_str.find('.');
+        mpz_class numerator;
+        mpz_class denominator = 1;
+
+        if (point_pos != std::string::npos) {
+            // Calculate the number of decimal places
+            int decimal_places = base_str.length() - point_pos - 1;
+
+            // Remove the decimal point and set the numerator
+            base_str.erase(point_pos, 1);
+            while (base_str.length() > 1 && base_str[0] == '0') {
+                base_str.erase(0, 1); // Remove leading zeros
+            }
+            numerator = mpz_class(base_str);
+
+            // Calculate the denominator
+            denominator = mpz_class(10);
+            mpz_pow_ui(denominator.get_mpz_t(), denominator.get_mpz_t(), decimal_places);
+        } else {
+            // If there is no decimal point, set the numerator directly
+            numerator = mpz_class(base_str);
+        }
+
+        // Adjust for the exponent in scientific notation
+        if (!exponent_str.empty()) {
+        	 exponent_str.erase(0, 1);
+            int exponent = std::stoi(exponent_str);
+            if (exponent > 0) {
+                mpz_class exp10 = mpz_class(10);
+                mpz_pow_ui(exp10.get_mpz_t(), exp10.get_mpz_t(), exponent);
+                numerator *= exp10;
+            } else if (exponent < 0) {
+                mpz_class exp10 = mpz_class(10);
+                mpz_pow_ui(exp10.get_mpz_t(), exp10.get_mpz_t(), -exponent);
+                denominator *= exp10;
+            }
+        }
+
+        // Apply the sign
+        if (is_negative) {
+            numerator = -numerator;
+        }
+
+        // Set the mpq_class (automatically reduced)
+        mpq_class rational_value(numerator, denominator);
+        rational_value.canonicalize();
+        return rational_value;
+    }
+
+    cout << "c c error: weight parse failed." << endl;
+    // Default to 0 for invalid input
+    return mpq_class(0);
 }
 
 template <class T_data>
@@ -95,9 +174,8 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 					if(weighted && tokens.size() == 6 && tokens.back() == "0") {
 						int lit = stoi(tokens[3]);
 						Lit l = SignedIntToLit(lit);
-						lit_weights[toInt(l)] = mpf_class(tokens[4]);
+						lit_weights[toInt(l)] = string_to_mpq(tokens[4]);
 						set_weight[toInt(l)] = true;
-						// cout << "c weight " << tokens[4] << " : " << lit_weights[toInt(l)] << endl;
 					}
 				}
 				else if(tokens[2] == "show") { // Read the list of projected vars
@@ -115,7 +193,7 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 				}
 				else if(tokens[2] == "gweight") {
 					if(weighted && tokens.size() == 5 && tokens.back() == "0") {
-						gweight = mpf_class(tokens[3]);
+						gweight = string_to_mpq(tokens[3]);
 					}
 				}
 			}
@@ -173,9 +251,9 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 				}
 			}
 
-			for(auto lit : {mkLit(v), ~mkLit(v)})
-				if(lit_weights[toInt(lit)] == 0)
-					cout << "c c Warning: The weight of literal " << (sign(lit) ? "-":"") << (var(lit)+1) << " is 0." << endl;
+//			for(auto lit : {mkLit(v), ~mkLit(v)})
+//				if(lit_weights[toInt(lit)] == 0)
+//					cout << "c c Warning: The weight of literal " << (sign(lit) ? "-":"") << (var(lit)+1) << " is 0." << endl;
 		}
 	}
 

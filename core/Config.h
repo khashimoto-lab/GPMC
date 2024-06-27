@@ -21,6 +21,7 @@ struct ConfigCounter {
 	bool remove_sat_cls;
 	bool rmvsatcl_threshold;
 	bool natw;
+	bool output_rational;
 	std::string pp_outfile;
 	std::string td_outfile;
 	std::string nnf_outfile;

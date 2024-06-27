@@ -16,6 +16,7 @@ static BoolOption		opt_simp		(omain, "rmvsatcl", "Remove satisfied clauses", tru
 static IntOption		opt_simp_thd	(omain, "rmvsatclthd", "Threshold of removing satisfied clauses", 2, IntRange(0,INT32_MAX));
 static DoubleOption	opt_coef		(omain, "coef", "TDscore coefficient", 100, DoubleRange(0, true, 10000000, true));
 static BoolOption		opt_natw		(omain, "natw", "Natural number weight. If off, real number weight ([0, 1])", false);
+static BoolOption		opt_frac		(omain, "out_frac", "Output the weighted result as a rational number when weighted model counting", false);
 static BoolOption		opt_ddnnf		(omain, "ddnnf", "Constructing a d-DNNF", false);
 static StringOption	opt_nnfout		(omain, "nnfout", "Outfile for d-DNNF", "NULL");
 static StringOption	opt_varscore	(omain, "varscore", "Input file for giving scores of variables", "NULL");
@@ -69,6 +70,7 @@ Configuration::Configuration() {
 	cntr.remove_sat_cls = opt_simp;
 	cntr.rmvsatcl_threshold = opt_simp_thd;
 	cntr.natw = opt_natw;
+	cntr.output_rational = opt_frac;
 	cntr.pp_outfile = opt_ppout;
 	cntr.td_outfile = opt_tdout;
 	cntr.nnf_outfile = opt_nnfout;

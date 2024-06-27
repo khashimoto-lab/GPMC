@@ -78,9 +78,9 @@ inline void Preprocessor<T_data>::printCNFInfo(const char* ppname, bool initial)
 	else
 		printf("c o [%-7s] %d vars (%d pvars), %d cls, %d lrnts, %d fvars, elap. %.2lf s\n", ppname, ins->vars, ins->npvars, ins->clauses.size(), ins->learnts.size(), ins->freevars, Glucose::cpuTime());
 
-	//if(ins->weighted)
-	//	std::cout << "c o gweight " << ins->gweight << std::endl;
-
+	if(ins->weighted) {
+		std::cout << "c o gweight " << ins->gweight.get_d() << std::endl;
+	}
 	fflush(stdout);
 }
 
