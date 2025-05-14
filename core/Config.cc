@@ -10,8 +10,8 @@ static IntOption		opt_mode		(omain, "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 
 static IntOption		opt_precision	(omain, "prec", "Precision of output of weighted model counting", 15, IntRange(15,INT32_MAX));
 static IntOption		opt_vs			(omain, "vs", "Variable Selection Heuristics", 1, IntRange(0,1));
 static IntOption		opt_cachesize	(omain, "cs", "Maximum component cache size (MB) (not strict)", 4000, IntRange(1, INT32_MAX));
-static BoolOption		opt_bj			(omain, "bj", "Backjumping", true);
-static DoubleOption	opt_bj_thd		(omain, "bjthd", "Backjumping threshold", 0.5, DoubleRange(0, false, 1, false));
+// static BoolOption		opt_bj			(omain, "bj", "Backjumping", true);
+// static DoubleOption	opt_bj_thd		(omain, "bjthd", "Backjumping threshold", 0.5, DoubleRange(0, false, 1, false));
 static BoolOption		opt_simp		(omain, "rmvsatcl", "Remove satisfied clauses", true);
 static IntOption		opt_simp_thd	(omain, "rmvsatclthd", "Threshold of removing satisfied clauses", 2, IntRange(0,INT32_MAX));
 static DoubleOption	opt_coef		(omain, "coef", "TDscore coefficient", 100, DoubleRange(0, true, 10000000, true));
@@ -64,8 +64,8 @@ Configuration::Configuration() {
 	cntr.ddnnf = opt_ddnnf;
 	cntr.precision = opt_precision;
 	cntr.coef_tdscore = opt_coef;
-	cntr.backjump = opt_bj;
-	cntr.bj_threshold = opt_bj_thd;
+//	cntr.backjump = opt_bj;
+//	cntr.bj_threshold = opt_bj_thd;
 	cntr.remove_sat_cls = opt_simp;
 	cntr.rmvsatcl_threshold = opt_simp_thd;
 	cntr.natw = opt_natw;

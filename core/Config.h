@@ -16,8 +16,8 @@ struct ConfigCounter {
 	bool ddnnf;
 	int precision;
 	double coef_tdscore;
-	bool backjump;
-	double bj_threshold;
+//	bool backjump;
+//	double bj_threshold;
 	bool remove_sat_cls;
 	bool rmvsatcl_threshold;
 	bool natw;

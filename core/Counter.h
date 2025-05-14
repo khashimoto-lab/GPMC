@@ -57,8 +57,7 @@ public:
 	/// statistics
 	uint64_t conflicts_pre, decisions_pre, propagations_pre;
 	uint64_t conflicts_sg, decisions_sg, propagations_sg;
-	uint64_t sats, nbackjumps, nbackjumps_sp;
-	uint64_t reduce_dbs_pre, simp_dbs;
+	uint64_t sats, reduce_dbs_pre, simp_dbs;
 	double simplify_time;
 
 protected:
@@ -80,8 +79,7 @@ protected:
 	/// backtrack
 	btStateT backtrack(); // int backtrack_level = -1); //, Lit lit = lit_Undef, CRef cr = CRef_Undef);
 	void cancelCurDL();
-	void bjResolve(int level);
-	btStateT Resolve(int bk_level, CRef cr, Lit lit);
+	btStateT Resolve();
 
 	/// SAT solving for the current component
 	lbool solveSAT();
@@ -106,18 +104,11 @@ protected:
 
 	vec<Lit> unitcls;			// The list of learnt unit clauses
 
-	int limlevel;				// for limited backjump
-	bool last_suc;
-	int  last_bklevel;
-	CRef last_cr;
-	Lit  last_lit;
-
 	vec<T_data> lit_weight;	// literal weight
 	T_data gweight;			// global weight
 
 	vec<double> exscore;		// extra score for variable selection
 
-	bool on_bj;				// limited bachjump on/off
 	bool on_simp;				// in-processing simplification on/off
 
 	progressT progress;		// counter progress

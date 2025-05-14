@@ -27,20 +27,12 @@ Counter<T_data>::Counter(Configuration& config_) :
 , decisions_sg       (0)
 , propagations_sg    (0)
 , sats               (0)
-, nbackjumps         (0)
-, nbackjumps_sp      (0)
 , reduce_dbs_pre     (0)
 , simp_dbs           (0)
 , simplify_time      (0.0)
 , npvars             (0)
 , npvars_isolated    (0)
-, limlevel           (0)
-, last_suc           (false)
-, last_bklevel       (0)
-, last_cr            (CRef_Undef)
-, last_lit           (lit_Undef)
 , gweight				(1)
-, on_bj				(config_.cntr.backjump)
 , on_simp				(config_.cntr.remove_sat_cls)
 , progress				(INIT)
 , verbosity_c        (1)
@@ -188,7 +180,6 @@ void Counter<T_data>::count_main()
 	unsigned int nblevels,szWoutSelectors;
 
 	btStateT bstate = RESOLVED;
-	limlevel = 0;
 	cmpmgr.init(nVars(),nPVars(),clauses,ca);
 
 	for(;;) {
@@ -226,12 +217,6 @@ void Counter<T_data>::count_main()
 			learnt_clause.clear();
 			selectors.clear();
 			bool suc = analyzeMC(confl, learnt_clause, selectors, backtrack_level, nblevels, szWoutSelectors);
-			if(!suc) {
-				nbackjumps_sp++;
-				bjResolve(backtrack_level);
-				bstate = RESOLVED;
-				continue;
-			}
 
 			CRef cr = CRef_Undef;
 			if (learnt_clause.size() == 1){
@@ -252,7 +237,7 @@ void Counter<T_data>::count_main()
 			varDecayActivity();
 			claDecayActivity();
 
-			bstate = Resolve(backtrack_level, cr, learnt_clause[0]);
+			bstate = Resolve();
 		} else {
 			// NO CONFLICT
 			assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
@@ -291,14 +276,7 @@ void Counter<T_data>::count_main()
 						cmpmgr.popComponent();
 					cmpmgr.removeCachePollutions();
 
-					if(!last_suc) {
-						nbackjumps_sp++;
-						bjResolve(last_bklevel);
-						bstate = RESOLVED;
-						continue;
-					}
-
-					bstate = Resolve(last_bklevel, last_cr, last_lit);
+					bstate = Resolve();
 				} else if(!cmpmgr.topDecision().hasUnprocessedSplitComp()){
 					bstate = backtrack();
 				}
@@ -310,7 +288,7 @@ void Counter<T_data>::count_main()
 
 		assert(cmpmgr.topComponent().hasPVar());
 
-		if (on_simp && decisionLevel() <= limlevel && cmpmgr.checkfixedDL() && !simplify()) {
+		if (on_simp && cmpmgr.checkfixedDL() && !simplify()) {
 			cmpmgr.topDecision().increaseModels((T_data)0, false);
 			if(config.ddnnf) cmpmgr.addNode(BOTTOM_NODE);
 			bstate = backtrack();
@@ -564,40 +542,10 @@ bool Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selec
 }
 
 template <typename T_data>
-inline void Counter<T_data>::bjResolve(int level) {
-	cancelUntil(level);
-	cmpmgr.backjumpTo(level);
-	cmpmgr.removeCachePollutions();
-	cmpmgr.topDecision().increaseModels((T_data)0, false);	// reset
-	if(config.ddnnf) cmpmgr.removeChildComponentNodes();
-}
-
-template <typename T_data>
-inline btStateT Counter<T_data>::Resolve(int bk_level, CRef cr, Lit lit) {
-	int level = std::max(bk_level, limlevel);
-	bool canjump = on_bj && level+1 < decisionLevel() && (double)level/decisionLevel() < config.bj_threshold;
-	if(canjump) {
-		nbackjumps++;
-		bjResolve(level);
-		if(cr != CRef_Undef) {
-			uncheckedEnqueue(lit, cr);
-			if(config.watchCand) {
-				if(var(lit) < npvars && cmpmgr.isDecCand(var(lit))) {
-					if(wc) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(lit)]);
-					if(config.ddnnf) cmpmgr.addLitNode(lit);
-				}
-			}
-		}
-		if(nbackjumps > nPVars()) {
-			on_bj = false;
-		}
-		return RESOLVED;
-	}
-	else {
-		cmpmgr.topDecision().increaseModels((T_data)0, false);	// set 0 (no model found at the current branch)
-		if(config.ddnnf) cmpmgr.addNode(BOTTOM_NODE);
-		return backtrack();
-	}
+inline btStateT Counter<T_data>::Resolve() {
+	cmpmgr.topDecision().increaseModels((T_data)0, false);	// set 0 (no model found at the current branch)
+	if(config.ddnnf) cmpmgr.addNode(BOTTOM_NODE);
+	return backtrack();
 }
 
 template <typename T_data>
@@ -617,7 +565,6 @@ btStateT Counter<T_data>::backtrack() {
 			uncheckedEnqueue(~dlit);
 			// Note: we do not try to assign an extra lit by the learnt clause when conflict occurs, but it may be an option.
 
-			limlevel = decisionLevel();
 			cmpmgr.topDecision().changeBranch();
 			if(wc) cmpmgr.topDecision().setBranchWeight(lit_weight[toInt(~dlit)]);
 			if(config.ddnnf) cmpmgr.setDecisionNode(~dlit);
@@ -647,7 +594,6 @@ btStateT Counter<T_data>::backtrack() {
 				cmpmgr.removeCachePollutions();
 				if(config.ddnnf) cmpmgr.addNode(BOTTOM_NODE);
 			} else if (cmpmgr.topDecision().hasUnprocessedSplitComp()) {
-				limlevel = decisionLevel() + 1;
 				return GO_TO_NEXT_COMP;
 			}
 
@@ -739,30 +685,27 @@ lbool Counter<T_data>::searchBelow(int start_dl) {
 
 				learnt_clause.clear();
 				selectors.clear();
-				last_suc = analyzeMC(confl, learnt_clause, selectors,
-						last_bklevel, nblevels, szWoutSelectors);
-				if (last_suc) {
-					last_lit = learnt_clause[0];
-					last_cr = CRef_Undef;
-					if (learnt_clause.size() == 1) {
-						unitcls.push(learnt_clause[0]);
-						nbUn++;
-					} else {
-						last_cr = ca.alloc(learnt_clause, true);
-						learnts.push(last_cr);
-						ca[last_cr].setLBD(nblevels);
-						ca[last_cr].setSizeWithoutSelectors(szWoutSelectors);
-						if (nblevels <= 2)
-							nbDL2++;
-						if (ca[last_cr].size() == 2)
-							nbBin++;
+				analyzeMC(confl, learnt_clause, selectors,
+					backtrack_level, nblevels, szWoutSelectors);
 
-						attachClause(last_cr);
-						claBumpActivity(ca[last_cr]);
-					}
-					varDecayActivity();
-					claDecayActivity();
+				if (learnt_clause.size() == 1) {
+					unitcls.push(learnt_clause[0]);
+					nbUn++;
+				} else {
+					CRef cr = ca.alloc(learnt_clause, true);
+					learnts.push(cr);
+					ca[cr].setLBD(nblevels);
+					ca[cr].setSizeWithoutSelectors(szWoutSelectors);
+					if (nblevels <= 2)
+						nbDL2++;
+					if (ca[cr].size() == 2)
+						nbBin++;
+
+					attachClause(cr);
+					claBumpActivity(ca[cr]);
 				}
+				varDecayActivity();
+				claDecayActivity();
 
 				return l_False;
 			}
@@ -869,7 +812,6 @@ void Counter<T_data>::printStats() const
 			printf("c o isolated_pvars        = %"PRIu64"\n", nIsoPVars());
 			printf("c o SAT calls             = %-11"PRIu64" (SAT %"PRIu64", UNSAT %"PRIu64")\n", solves, sats, solves-sats);
 			printf("c o SAT starts            = %"PRIu64"\n", starts);
-			printf("c o backjumps             = %-11"PRIu64" (sp %"PRIu64") [init %s / final %s]\n", nbackjumps+nbackjumps_sp, nbackjumps_sp, config.backjump ? "on" : "off", on_bj ? "on" : "off");
 			printf("c o\n");
 		}
 		if(config.ddnnf) {

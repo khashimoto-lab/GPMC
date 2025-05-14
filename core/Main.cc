@@ -311,9 +311,19 @@ int main(int argc, char** argv)
 			} }
 
 		if(config.cntr.mode == MC || config.cntr.mode == PMC || config.cntr.natw) {
+			if (config.cntr.ddnnf) {
+				printf("c o WARNING! d-DNNF is not supported.\n");
+				fflush(stdout);
+				exit(0);
+			}
+
 			Counter<mpz_class> S(config);
 			main_mc(S, filename);
 		} else {
+			printf("c o WARNING! Weighted Model Counting is not supported.\n");
+			fflush(stdout);
+			exit(0);
+
 			if(config.cntr.precision > 15)
 				mpfr::mpreal::set_default_prec(mpfr::digits2bits(config.cntr.precision));
 
