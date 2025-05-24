@@ -460,6 +460,35 @@ void Solver::cancelUntil(int level) {
     } 
 }
 
+// for ChronoCDCL
+// from CaDiCaL Version 2.1.0, backtrack (int new_level)
+void Solver::cancelUntilChrono(int bLevel)
+{
+  assert (bLevel <= decisionLevel());
+  if (bLevel == decisionLevel()) return;
+
+  const int end_of_trail = trail.size();
+  int i = trail_lim[bLevel], j = i;
+
+  while (i < end_of_trail) {
+    Lit lit = trail[i++];
+    Var v = var(lit);
+    if (level(v) > bLevel) {
+      assigns[v] = l_Undef;
+      if(phase_saving > 1 || ((phase_saving == 1) && v > trail_lim.last())) {
+          polarity[v] = sign(trail[v]);
+      }
+      insertVarOrder(v);
+    } else {
+      trail[j] = lit;
+      j++;
+    }
+  }
+  qhead = trail_lim[bLevel];
+  trail.shrink(end_of_trail - j);
+  trail_lim.shrink(trail_lim.size() - bLevel);
+}
+
 
 //=================================================================================================
 // Major methods:
@@ -486,6 +515,47 @@ Lit Solver::pickBranchLit()
     return next == var_Undef ? lit_Undef : mkLit(next, rnd_pol ? drand(random_seed) < 0.5 : polarity[next]);
 }
 
+// Find the decisionlevel conflict occurred. (for ChronoCDCL)
+// from MapleLCMDistChronoBT, FindConflictLevel(CRef cind)
+Solver::ConflictData Solver::FindConflictLevel(CRef cind)
+{
+  ConflictData data;
+  Clause& conflCls = ca[cind];
+  data.nHighestLevel = level(var(conflCls[0]));
+
+  if (data.nHighestLevel == decisionLevel() && level(var(conflCls[1])) == decisionLevel()) {
+    return data;
+  }
+
+  int highestId = 0;
+  data.bOnlyOneLitFromHighest = true;
+  // find the largest decision level in the clause
+  for (int nLitId = 1; nLitId < conflCls.size(); ++nLitId) {
+    int nLevel = level(var(conflCls[nLitId]));
+    if (nLevel > data.nHighestLevel) {
+      highestId = nLitId;
+      data.nHighestLevel = nLevel;
+      data.bOnlyOneLitFromHighest = true;
+    }
+    else if (nLevel == data.nHighestLevel && data.bOnlyOneLitFromHighest == true) {
+      data.bOnlyOneLitFromHighest = false;
+    }
+  }
+
+	// cannot ommit this
+  if (highestId != 0) {
+    std::swap(conflCls[0], conflCls[highestId]);
+    if (highestId > 1)
+    {
+      OccLists<Lit, vec<Watcher>, WatcherDeleted>& ws = conflCls.size() == 2 ? watchesBin : watches;
+      //ws.smudge(~conflCls[highestId]);
+      remove(ws[~conflCls[highestId]], Watcher(cind, conflCls[1]));
+      ws[~conflCls[0]].push(Watcher(cind, conflCls[1]));
+    }
+  }
+
+  return data;
+}
 
 /*_________________________________________________________________________________________________
 |
@@ -678,6 +748,184 @@ void Solver::analyze(CRef confl, vec<Lit>& out_learnt,vec<Lit>&selectors, int& o
   for(int j = 0 ; j<selectors.size() ; j++) seen[var(selectors[j])] = 0;  
 }
 
+// for ChronoCDCL
+void Solver::analyzeChrono(CRef confl, vec <Lit> &out_learnt, vec <Lit> &selectors, int &out_btlevel, unsigned int &lbd, unsigned int &szWithoutSelectors)
+{
+  int pathC = 0;
+  Lit p     = lit_Undef;
+
+  // Generate conflict clause:
+  //
+  out_learnt.push();      // (leave room for the asserting literal)
+  int index   = trail.size() - 1;
+  int nDecisionLevel = level(var(ca[confl][0]));
+  assert(nDecisionLevel == level(var(ca[confl][0])));
+
+  do{
+    assert(confl != CRef_Undef); // (otherwise should be UIP)
+    Clause& c = ca[confl];
+
+    // Special case for binary clauses
+    // The first one has to be SAT
+    if( p != lit_Undef && c.size()==2 && value(c[0])==l_False) {
+      assert(value(c[1])==l_True);
+      Lit tmp = c[0];
+      c[0] =  c[1], c[1] = tmp;
+    }
+  
+    if (c.learnt())
+      claBumpActivity(c);
+
+#ifdef DYNAMICNBLEVEL		    
+    // DYNAMIC NBLEVEL trick (see competition'09 companion paper)
+    if(c.learnt()  && c.lbd()>2) { 
+      unsigned int nblevels = computeLBD(c);
+      if(nblevels+1<c.lbd() ) { // improve the LBD
+        if(c.lbd()<=lbLBDFrozenClause) {
+          c.setCanBeDel(false); 
+        }
+        // seems to be interesting : keep it for the next round
+        c.setLBD(nblevels); // Update it
+      }
+    }
+#endif
+
+
+    for (int j = (p == lit_Undef) ? 0 : 1; j < c.size(); j++){
+      Lit q = c[j];
+
+      if (!seen[var(q)] && level(var(q)) > 0){
+        if(!isSelector(var(q)))
+          varBumpActivity(var(q));
+        seen[var(q)] = 1;
+        if (level(var(q)) >= nDecisionLevel) {
+          pathC++;
+#ifdef UPDATEVARACTIVITY
+          // UPDATEVARACTIVITY trick (see competition'09 companion paper)
+          if(!isSelector(var(q)) && (reason(var(q))!= CRef_Undef)  && ca[reason(var(q))].learnt()) 
+          lastDecisionLevel.push(q);
+#endif
+
+        } else {
+          if(isSelector(var(q))) {
+            assert(value(q) == l_False);
+            selectors.push(q);
+          } else 
+            out_learnt.push(q);
+        }
+      }
+    }
+
+    // Select next clause to look at:
+    do {
+      while (!seen[var(trail[index--])]);
+      p = trail[index + 1];
+    } while (level(var(p)) < nDecisionLevel);
+
+    confl = reason(var(p));
+    seen[var(p)] = 0;
+    pathC--;
+
+  }while (pathC > 0);
+  out_learnt[0] = ~p;
+
+  // Simplify conflict clause:
+  //
+  int i, j;
+
+  for(int i = 0;i<selectors.size();i++)  
+    out_learnt.push(selectors[i]);       
+
+  out_learnt.copyTo(analyze_toclear);
+  if (ccmin_mode == 2){
+    uint32_t abstract_level = 0;
+    for (i = 1; i < out_learnt.size(); i++)
+      abstract_level |= abstractLevel(var(out_learnt[i])); // (maintain an abstraction of levels involved in conflict)
+
+    for (i = j = 1; i < out_learnt.size(); i++)
+      if (reason(var(out_learnt[i])) == CRef_Undef || !litRedundant(out_learnt[i], abstract_level))
+        out_learnt[j++] = out_learnt[i];
+
+  }else if (ccmin_mode == 1){
+    for (i = j = 1; i < out_learnt.size(); i++){
+      Var x = var(out_learnt[i]);
+
+      if (reason(x) == CRef_Undef)
+        out_learnt[j++] = out_learnt[i];
+      else{
+        Clause& c = ca[reason(var(out_learnt[i]))];
+        // Thanks to Siert Wieringa for this bug fix!
+        for (int k = ((c.size()==2) ? 0:1); k < c.size(); k++)
+          if (!seen[var(c[k])] && level(var(c[k])) > 0){
+            out_learnt[j++] = out_learnt[i];
+            break;
+          }
+      }
+    }
+  }else
+    i = j = out_learnt.size();
+
+  max_literals += out_learnt.size();
+  out_learnt.shrink(i - j);
+  tot_literals += out_learnt.size();
+
+
+  /* ***************************************
+    Minimisation with binary clauses of the asserting clause
+    First of all : we look for small clauses
+    Then, we reduce clauses with small LBD.
+    Otherwise, this can be useless
+  */
+  if(!incremental && out_learnt.size()<=lbSizeMinimizingClause) {
+    minimisationWithBinaryResolution(out_learnt);
+  }
+  // Find correct backtrack level:
+  //
+  if (out_learnt.size() == 1)
+    out_btlevel = 0;
+  else{
+    int max_i = 1;
+    // Find the first literal assigned at the next-highest level:
+    for (int i = 2; i < out_learnt.size(); i++)
+      if (level(var(out_learnt[i])) > level(var(out_learnt[max_i])))
+        max_i = i;
+    // Swap-in this literal at index 1:
+    Lit p             = out_learnt[max_i];
+    out_learnt[max_i] = out_learnt[1];
+    out_learnt[1]     = p;
+    out_btlevel       = level(var(p));
+  }
+
+
+  // Compute the size of the clause without selectors (incremental mode)
+  if(incremental) {
+    szWithoutSelectors = 0;
+    for(int i=0;i<out_learnt.size();i++) {
+      if(!isSelector(var((out_learnt[i])))) szWithoutSelectors++; 
+      else if(i>0) break;
+    }
+  } else 
+    szWithoutSelectors = out_learnt.size();
+
+  // Compute LBD
+  lbd = computeLBD(out_learnt,out_learnt.size()-selectors.size());
+
+
+#ifdef UPDATEVARACTIVITY
+  // UPDATEVARACTIVITY trick (see competition'09 companion paper)
+  if(lastDecisionLevel.size()>0) {
+    for(int i = 0;i<lastDecisionLevel.size();i++) {
+      if(ca[reason(var(lastDecisionLevel[i]))].lbd()<lbd)
+      varBumpActivity(var(lastDecisionLevel[i]));
+    }
+    lastDecisionLevel.clear();
+  } 
+#endif
+
+
+  for (int j = 0; j < analyze_toclear.size(); j++) seen[var(analyze_toclear[j])] = 0;    // ('seen[]' is now cleared)
+  for (int j = 0; j < selectors.size() ; j++) seen[var(selectors[j])] = 0;  
+}
 
 // Check if 'p' can be removed. 'abstract_levels' is used to abort early if the algorithm is
 // visiting literals at levels that cannot be removed later.
@@ -764,6 +1012,15 @@ void Solver::uncheckedEnqueue(Lit p, CRef from)
     assigns[var(p)] = lbool(!sign(p));
     vardata[var(p)] = mkVarData(from, decisionLevel());
     trail.push_(p);
+}
+
+// for ChronoCDCL
+void Solver::uncheckedEnqueue(Lit p, int level, CRef from)
+{
+  assert(value(p) == l_Undef);
+  assigns[var(p)] = lbool(!sign(p));
+  vardata[var(p)] = mkVarData(from, level);
+  trail.push_(p);
 }
 
 
@@ -887,6 +1144,119 @@ CRef Solver::propagate()
     return confl;
 }
 
+// for ChronoCDCL
+// from MapleLCMDistChronoBT, propagate()
+CRef Solver::propagateChrono()
+{
+  CRef confl     = CRef_Undef;
+  int  num_props = 0;
+  watches.cleanAll();
+  watchesBin.cleanAll();
+
+  while (qhead < trail.size()){
+    Lit           p  = trail[qhead++];     // 'p' is enqueued fact to propagate.
+    int currLevel    = level(var(p));
+    vec<Watcher>& ws = watches[p];
+    Watcher *i, *j, *end;
+    num_props++;
+
+  
+    // First, Propagate binary clauses
+    vec<Watcher>&  wbin  = watchesBin[p];
+  
+    for(int k = 0;k<wbin.size();k++) {
+      Lit imp = wbin[k].blocker;
+    
+      if(value(imp) == l_False) {
+        return wbin[k].cref;
+      }
+
+      if(value(imp) == l_Undef) {
+        uncheckedEnqueue(imp, currLevel, wbin[k].cref);
+      }
+    }
+
+
+    for (i = j = (Watcher*)ws, end = i + ws.size();  i != end;){
+      // Try to avoid inspecting the clause:
+      Lit blocker = i->blocker;
+      if (value(blocker) == l_True){
+        *j++ = *i++; continue;
+      }
+
+      // Make sure the false literal is data[1]:
+      CRef     cr        = i->cref;
+      Clause&  c         = ca[cr];
+      Lit      false_lit = ~p;
+      if (c[0] == false_lit)
+        c[0] = c[1], c[1] = false_lit;
+      assert(c[1] == false_lit);
+      i++;
+
+      // If 0th watch is true, then clause is already satisfied.
+      Lit     first = c[0];
+      Watcher w     = Watcher(cr, first);
+      if (first != blocker && value(first) == l_True){  
+        *j++ = w; continue;
+      }
+
+      // Look for new watch:
+			for (int k = 2; k < c.size(); k++) {
+				if (value(c[k]) != l_False){
+					c[1] = c[k]; c[k] = false_lit;
+					watches[~c[1]].push(w);
+					goto NextClause;
+				}
+			}
+
+      // Did not find watch -- clause is unit under assignment:
+      *j++ = w;
+      if (value(first) == l_False){
+        confl = cr;
+        qhead = trail.size();
+        // Copy the remaining watches:
+        while (i < end)
+          *j++ = *i++;
+      }else {
+        if (currLevel == decisionLevel()) {
+          uncheckedEnqueue(first, currLevel, cr);
+
+        } else {
+          int nMaxLevel = currLevel;
+          //int nMaxInd = 1;
+          // pass over all the literals in the clause and find the one with the biggest level
+          for (int nInd = 2; nInd < c.size(); ++nInd)
+          {
+            int nLevel = level(var(c[nInd]));
+            if (nLevel > nMaxLevel)
+            {
+              nMaxLevel = nLevel;
+              //nMaxInd = nInd;
+            }
+          }
+
+          // this does not exist in CaDiCaL
+          //if (nMaxInd != 1)
+          //{
+          //  std::swap(c[1], c[nMaxInd]);
+          //  *j--; // undo last watch
+          //  watches[~c[1]].push(w);
+          //}
+            
+          uncheckedEnqueue(first, nMaxLevel, cr);
+        }
+    
+    
+      }
+      NextClause:;
+    }
+    ws.shrink(i - j);
+  }
+  propagations += num_props;
+  simpDB_props -= num_props;
+
+  return confl;
+}
 
 /*_________________________________________________________________________________________________
 |

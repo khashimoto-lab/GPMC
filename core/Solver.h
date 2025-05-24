@@ -200,6 +200,14 @@ protected:
         VarOrderLt(const vec<double>&  act) : activity(act) { }
     };
 
+		struct ConflictData {
+			ConflictData() : 
+				nHighestLevel(-1),
+				bOnlyOneLitFromHighest(false) {}
+	
+			int nHighestLevel;
+			bool bOnlyOneLitFromHighest;
+		};
 
     // Solver state:
     //
@@ -276,14 +284,19 @@ protected:
 
     // Main internal methods:
     //
+		// in Counter, use propagateChrono, cancelUntilChrono, analyzeChrono
     void     insertVarOrder   (Var x);                                                 // Insert a variable in the decision order priority queue.
     Lit      pickBranchLit    ();                                                      // Return the next decision variable.
     void     newDecisionLevel ();                                                      // Begins a new decision level.
     void     uncheckedEnqueue (Lit p, CRef from = CRef_Undef);                         // Enqueue a literal. Assumes value of literal is undefined.
+		void     uncheckedEnqueue (Lit p, int level, CRef from = CRef_Undef);              // for ChronoCDCL.
     bool     enqueue          (Lit p, CRef from = CRef_Undef);                         // Test if fact 'p' contradicts current state, enqueue otherwise.
     CRef     propagate        ();                                                      // Perform unit propagation. Returns possibly conflicting clause.
+		CRef     propagateChrono  ();                                                      // for ChronoCDCL.
     void     cancelUntil      (int level);                                             // Backtrack until a certain level.
+    void     cancelUntilChrono(int level);                                             // for ChronoCDCL.
     void     analyze          (CRef confl, vec<Lit>& out_learnt, vec<Lit> & selectors, int& out_btlevel,unsigned int &nblevels,unsigned int &szWithoutSelectors);    // (bt = backtrack)
+    void     analyzeChrono    (CRef confl, vec<Lit>& out_learnt, vec<Lit> & selectors, int& out_btlevel,unsigned int &nblevels,unsigned int &szWithoutSelectors);    // for ChronoCDCL.
     void     analyzeFinal     (Lit p, vec<Lit>& out_conflict);                         // COULD THIS BE IMPLEMENTED BY THE ORDINARIY "analyze" BY SOME REASONABLE GENERALIZATION?
     bool     litRedundant     (Lit p, uint32_t abstract_levels);                       // (helper method for 'analyze()')
     lbool    search           (int nof_conflicts);                                     // Search for a given number of conflicts.
@@ -323,6 +336,8 @@ protected:
     double   progressEstimate ()      const; // DELETE THIS ?? IT'S NOT VERY USEFUL ...
     bool     withinBudget     ()      const;
     inline bool isSelector(Var v) {return (incremental && v>nbVarsInitialFormula);}
+
+		ConflictData FindConflictLevel (CRef cind); // Find the decisionlevel conflict occurred. (for ChronoCDCL)
 
     // Static helpers:
     //

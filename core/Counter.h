@@ -12,7 +12,7 @@ using namespace Glucose;
 
 namespace GPMC {
 
-#define GPMC_VERSION "gpmc-1.1.1"
+#define GPMC_VERSION "gpmc-1.1.1-dev/chrono_cdcl"
 
 enum progressT {
 	INIT, LOADED, PREPROCESSED, COMPLETED_BYPP, COMPLETED, FAILED
@@ -39,6 +39,24 @@ public:
 	void printStats() const;							// print statistics
 	const T_data& getMC() { return npmodels; }	// get the computed count
 
+	// remove literals after the size-th literal
+	// do not remove decision literal
+	void cancelUntilSize(int size)
+	{
+		assert (size >= trail_lim.last());
+
+		for(int c = trail.size() - 1; c >= size; c--) {
+				Var x = var(trail[c]);
+				assigns[x] = l_Undef;
+				if(phase_saving > 1 || ((phase_saving == 1) && c > trail_lim.last())) {
+						polarity[x] = sign(trail[c]);
+				}
+				insertVarOrder(x);
+		}
+		qhead = size;
+		trail.shrink(trail.size() - size);
+	}
+
 	void writeNNF();
 	T_data mcDDNNF();
 
@@ -57,7 +75,7 @@ public:
 	/// statistics
 	uint64_t conflicts_pre, decisions_pre, propagations_pre;
 	uint64_t conflicts_sg, decisions_sg, propagations_sg;
-	uint64_t sats, reduce_dbs_pre, simp_dbs;
+	uint64_t sats, reduce_dbs_pre, simp_dbs, max_decs;
 	double simplify_time;
 
 protected:
@@ -85,7 +103,7 @@ protected:
 	lbool solveSAT();
 	lbool searchBelow(int start_level);
 
-	bool analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit> & selectors,
+	void analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit> & selectors,
 			int& out_btlevel, unsigned int &nblevels,
 			unsigned int &szWithoutSelectors);
 	unsigned int computeLBDMC(const vec<Lit> & lits, int end);
@@ -101,8 +119,6 @@ protected:
 
 	ComponentManager<T_data> cmpmgr;	// The manger for processing components
 	vec<vec<int>> occ_lists;
-
-	vec<Lit> unitcls;			// The list of learnt unit clauses
 
 	vec<T_data> lit_weight;	// literal weight
 	T_data gweight;			// global weight

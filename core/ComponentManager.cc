@@ -122,7 +122,7 @@ int ComponentManager<T_data>::splitComponent(const vec<lbool>& assigns, const ve
 	for (p = 0; (v = targetcomp[p]) != var_Undef; p++) {
 		if (varseen_[v] == SC_CANDIDATE) {
 			searchComponent(v, assigns, nvars_in_comp, ncls_in_comp);
-			if (nvars_in_comp == 1) {
+			if (nvars_in_comp == 1 && ncls_in_comp == 0) {
 				if(isPVar(v)){
 					if(config.weighted)
 						dl_.back().increaseModels(lit_weight[toInt(mkLit(v, true))]+lit_weight[toInt(mkLit(v, false))], true);
@@ -260,7 +260,7 @@ void ComponentManager<T_data>::searchComponent(Var seed_var, const vec<lbool>& a
 }
 
 template <class T_data>
-Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const vec<double>& exscore)
+Var ComponentManager<T_data>::pickBranchVar(const vec<lbool>& assigns, const vec<double>& activity, const vec<double>& exscore)
 {
 	// GPMC uses the lexicographical order of var_frequency and activity for choosing a decision var.
 	// ToDo: try other heuristics
@@ -276,6 +276,8 @@ Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const v
 	if(config.varSelectionHueristics == 0) {
 		int p;
 		for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
+			if (assigns[c[p]] != l_Undef) continue;
+
 			double score_f = var_frequency_[c[p]] + exscore[c[p]];
 			double score_a = activity[c[p]];
 			if( score_f > max_score_f) {
@@ -292,6 +294,8 @@ Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const v
 		double max_score_td = -1;
 		int p;
 		for(p=0; isPVar(c[p]) && c[p] != var_Undef; p++) {
+      if (assigns[c[p]] != l_Undef) continue;
+
 			double score_td = exscore[c[p]];
 			double score_f = var_frequency_[c[p]];
 			double score_a = activity[c[p]];
@@ -314,7 +318,6 @@ Var ComponentManager<T_data>::pickBranchVar(const vec<double>& activity, const v
 			}
 		}
 	}
-	assert(maxv != var_Undef);
 	return maxv;
 }
 

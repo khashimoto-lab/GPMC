@@ -29,6 +29,7 @@ Counter<T_data>::Counter(Configuration& config_) :
 , sats               (0)
 , reduce_dbs_pre     (0)
 , simp_dbs           (0)
+, max_decs           (0)
 , simplify_time      (0.0)
 , npvars             (0)
 , npvars_isolated    (0)
@@ -127,7 +128,7 @@ bool Counter<T_data>::preprocess()
 template <typename T_data>
 bool Counter<T_data>::simplify()
 {
-	if (!ok || propagate() != CRef_Undef)
+	if (!ok || propagateChrono() != CRef_Undef)
 		return ok = false;
 
 	if (nAssigns() == simpDB_assigns || (simpDB_props > 0))
@@ -166,7 +167,7 @@ bool Counter<T_data>::countModels()
 	import();
 	solves = starts = 0;
 	count_main();
-	cancelUntil(0);
+	cancelUntilChrono(0);
 
 	progress = asynch_interrupt ? FAILED : COMPLETED;
 	return !asynch_interrupt;
@@ -175,9 +176,14 @@ bool Counter<T_data>::countModels()
 template <typename T_data>
 void Counter<T_data>::count_main()
 {
-	int          backtrack_level;
+	int          backtrack_level = 0, conflict_level = 0;
 	vec<Lit>     learnt_clause,selectors;
 	unsigned int nblevels,szWoutSelectors;
+	CRef cr = CRef_Undef;
+
+	Lit  uip        = lit_Undef;
+	int  uip_level  = 0;
+	CRef uip_reason = CRef_Undef;
 
 	btStateT bstate = RESOLVED;
 	cmpmgr.init(nVars(),nPVars(),clauses,ca);
@@ -186,15 +192,12 @@ void Counter<T_data>::count_main()
 		assert(!cmpmgr.topDecision().hasUnprocessedSplitComp());
 		if(asynch_interrupt) return;
 
-		int bpos = trail.size();
-		for(int i = 0; i < unitcls.size(); i++){
-			enqueue(unitcls[i]);
-			vardata[var(unitcls[i])].level = 0;
-			activity[var(unitcls[i])] = 0;
-		}
-		if(decisionLevel() == 0) unitcls.clear();
+		// statistics
+		if (decisionLevel() > max_decs) max_decs = decisionLevel();
 
-		CRef confl = propagate();
+		int bpos = trail.size();
+
+		CRef confl = propagateChrono();
 		if(config.watchCand) {
 			for(int i = bpos; i < trail.size(); i++){
 				if(var(trail[i]) < npvars && cmpmgr.isDecCand(var(trail[i]))) {
@@ -212,30 +215,57 @@ void Counter<T_data>::count_main()
 			if(conflicts % 5000 == 0 && var_decay < 0.95)
 				var_decay += 0.01;
 
-			if(decisionLevel() == 0) break;
+			ConflictData data = FindConflictLevel(confl);
+			conflict_level = data.nHighestLevel;
+			if (conflict_level == 0) break;
 
-			learnt_clause.clear();
-			selectors.clear();
-			bool suc = analyzeMC(confl, learnt_clause, selectors, backtrack_level, nblevels, szWoutSelectors);
+			if (data.bOnlyOneLitFromHighest) {
+				Clause& conflCls = ca[confl];
+				int nMaxLevel = level(var(conflCls[1]));
+				for (int nInd = 2; nInd < conflCls.size(); ++nInd) {
+					int nLevel = level(var(conflCls[nInd]));
+					if (nLevel > nMaxLevel) nMaxLevel = nLevel;
+				}
+				uip = conflCls[0];
+				uip_level = nMaxLevel;
+				uip_reason = confl;
 
-			CRef cr = CRef_Undef;
-			if (learnt_clause.size() == 1){
-				unitcls.push(learnt_clause[0]); nbUn++;
-			}
-			else {
-				cr = ca.alloc(learnt_clause, true);
-				learnts.push(cr);
-				ca[cr].setLBD(nblevels); 
-				ca[cr].setSizeWithoutSelectors(szWoutSelectors);
-				if(nblevels<=2) nbDL2++;
-				if(ca[cr].size()==2) nbBin++;
+			} else {
+				learnt_clause.clear();
+				selectors.clear();
+				analyzeMC(confl, learnt_clause, selectors, backtrack_level, nblevels, szWoutSelectors);
 
-				attachClause(cr);
-				claBumpActivity(ca[cr]);
+				CRef cr = CRef_Undef;
+				if (learnt_clause.size() == 1){
+					uip = learnt_clause[0];
+					uip_level = 0;
+					uip_reason = CRef_Undef;
+					nbUn++;
+				}
+				else {
+					cr = ca.alloc(learnt_clause, true);
+					learnts.push(cr);
+					ca[cr].setLBD(nblevels); 
+					ca[cr].setSizeWithoutSelectors(szWoutSelectors);
+					if(nblevels<=2) nbDL2++;
+					if(ca[cr].size()==2) nbBin++;
+
+					attachClause(cr);
+					claBumpActivity(ca[cr]);
+
+					uip = learnt_clause[0];
+					uip_level = backtrack_level;
+					uip_reason = cr;
+				}
 			}
 
 			varDecayActivity();
 			claDecayActivity();
+
+			cancelUntilChrono(conflict_level);
+			cmpmgr.popSomeDecisions(conflict_level);
+			cmpmgr.removeCachePollutions();
+			cmpmgr.shrinkDecisionComps();
 
 			bstate = Resolve();
 		} else {
@@ -252,6 +282,8 @@ void Counter<T_data>::count_main()
 			}
 			else {
 				bstate = GO_TO_NEXT_COMP;
+
+				cmpmgr.topDecision().setTrailPos(trail.size());
 
 				// PROCESS COMPONENTS WITHOUT PROJECTION VARS FIRST
 				lbool sat_status = l_Undef;
@@ -272,9 +304,9 @@ void Counter<T_data>::count_main()
 				}
 
 				if(sat_status == l_False){
-					while(cmpmgr.topDecision().hasUnprocessedSplitComp())
-						cmpmgr.popComponent();
+					cmpmgr.popSomeDecisions(decisionLevel());
 					cmpmgr.removeCachePollutions();
+					cmpmgr.shrinkDecisionComps();
 
 					bstate = Resolve();
 				} else if(!cmpmgr.topDecision().hasUnprocessedSplitComp()){
@@ -283,10 +315,28 @@ void Counter<T_data>::count_main()
 			}
 		}
 
+		if (uip != lit_Undef && uip_level < decisionLevel()) {
+			// TODO: if (value(uip) == l_False) ..
+			if (value(uip) == l_Undef) {
+				uncheckedEnqueue(uip, uip_level, uip_reason);
+			}
+		}
+		uip = lit_Undef;
+
+		// ommit propagateChrono, analyzeChrono
+		// they are not necessary for correctness, and does not improve running time.
+
 		if(bstate == EXIT) break;
 		else if(bstate == RESOLVED) continue;
 
 		assert(cmpmgr.topComponent().hasPVar());
+
+		// remove literals propagated in the previous component.
+		// this does not effect running time.
+		// if we do this, we do not need the complex code in the selection of decision literals.
+		//
+		// if (trail_lim.size() > 0)
+		//   cancelUntilSize(cmpmgr.topDecision().trailPos());
 
 		if (on_simp && cmpmgr.checkfixedDL() && !simplify()) {
 			cmpmgr.topDecision().increaseModels((T_data)0, false);
@@ -305,11 +355,52 @@ void Counter<T_data>::count_main()
 		}
 
 		// DECIDE A LITERAL FROM TOP COMPONENT
-		Var dec_var = cmpmgr.pickBranchVar(activity, exscore);
+		Var dec_var = cmpmgr.pickBranchVar(assigns, activity, exscore);
+		while (dec_var == var_Undef) {
+			if (!mc) {
+				// PMC
+				lbool sat_status_dec = solveSAT();
+
+				if (sat_status_dec == l_True) {
+					sats++;
+					cmpmgr.topDecision().increaseModels((T_data)1, true);
+					cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),1,TOP_NODE);
+					cmpmgr.eraseComponentStackID();
+					cmpmgr.popComponent();
+					if (!cmpmgr.topDecision().hasUnprocessedSplitComp()) {
+						bstate = backtrack();
+					}
+				}
+				else if (sat_status_dec == l_False) {
+					cmpmgr.popSomeDecisions(decisionLevel());
+					cmpmgr.removeCachePollutions();
+					cmpmgr.shrinkDecisionComps();
+					bstate = Resolve();
+				}
+				else { assert(asynch_interrupt); asynch_interrupt = true; return;}
+			
+			} else {
+				// MC
+				cmpmgr.topDecision().increaseModels((T_data)1, true);
+				cmpmgr.cacheModelCountOf(cmpmgr.topComponent().id(),1,TOP_NODE);
+				cmpmgr.eraseComponentStackID();
+				cmpmgr.popComponent();
+				if (!cmpmgr.topDecision().hasUnprocessedSplitComp()) {
+					bstate = backtrack();
+				}
+			}
+
+			if (bstate == EXIT || bstate == RESOLVED) break;
+			dec_var = cmpmgr.pickBranchVar(assigns, activity, exscore);
+		}
+
+		if (bstate == EXIT) break;
+		else if (bstate == RESOLVED) continue;
+
 		decisions++;
 
 		newDecisionLevel();
-		cmpmgr.pushDecision(trail.size());
+		cmpmgr.pushDecision(decisionLevel());
 
 		Lit dlit = mkLit(dec_var, polarity[dec_var]);
 		uncheckedEnqueue(dlit);
@@ -332,7 +423,7 @@ void Counter<T_data>::count_main()
 }
 
 template <typename T_data>
-bool Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selectors,
+void Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selectors,
 		int& out_btlevel, unsigned int &lbd, unsigned int &szWithoutSelectors) {
 	int pathC = 0;
 	Lit p = lit_Undef;
@@ -341,6 +432,8 @@ bool Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selec
 	//
 	out_learnt.push();      // (leave room for the asserting literal)
 	int index = trail.size() - 1;
+	int nDecisionLevel = level(var(ca[confl][0]));
+	assert(nDecisionLevel == level(var(ca[confl][0])));
 
 	do {
 		assert(confl != CRef_Undef); // (otherwise should be UIP)
@@ -379,7 +472,7 @@ bool Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selec
 				if (!isSelector(var(q)))
 					varBumpActivity(var(q));
 				seen[var(q)] = 1;
-				if (level(var(q)) >= decisionLevel()) {
+				if (level(var(q)) >= nDecisionLevel) {
 					pathC++;
 #ifdef UPDATEVARACTIVITY
 					// UPDATEVARACTIVITY trick (see competition'09 companion paper)
@@ -398,44 +491,15 @@ bool Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selec
 			}
 		}
 
-		// added by k-hasimt
-		if (pathC <= 0) {
-			// backjump conservatively to restart
-			out_btlevel = 0;
-			for (int i = 1; i < out_learnt.size(); i++) {
-				seen[var(out_learnt[i])] = 0;
-				if (out_btlevel < level(var(out_learnt[i])))
-					out_btlevel = level(var(out_learnt[i]));
-			}
-			if (out_btlevel > 0)
-				out_btlevel--;
-			for (int j = 0; j < selectors.size(); j++)
-				seen[var(selectors[j])] = 0;
-			// ToDo: make an appropriate learnt clause and do backjumping.
-			return false;
-		}
-		//---
-		/*
-		 // Select next clause to look at:
-		 while (!seen[var(trail[index--])]);
-		 p     = trail[index+1];
-		 confl = reason(var(p));
-		 seen[var(p)] = 0;
-		 pathC--;
-		 */
+		// Select next clause to look at:
 		do {
-			// Select next clause to look at:
-			while (!seen[var(trail[index--])])
-				;
+			while (!seen[var(trail[index--])]);
 			p = trail[index + 1];
-			confl = reason(var(p));
-			seen[var(p)] = 0;
-			pathC--;
-			if (confl == CRef_Undef && pathC > 0) {
-				out_learnt.push(~p);
-				assert(level(var(p)) <= decisionLevel());
-			}
-		} while (confl == CRef_Undef && pathC > 0);
+		} while (level(var(p)) < nDecisionLevel);
+
+		confl = reason(var(p));
+		seen[var(p)] = 0;
+		pathC--;
 
 	} while (pathC > 0);
 	out_learnt[0] = ~p;
@@ -537,8 +601,6 @@ bool Counter<T_data>::analyzeMC(CRef confl, vec<Lit>& out_learnt, vec<Lit>&selec
 		seen[var(analyze_toclear[j])] = 0;    // ('seen[]' is now cleared)
 	for (int j = 0; j < selectors.size(); j++)
 		seen[var(selectors[j])] = 0;
-
-	return true;
 }
 
 template <typename T_data>
@@ -608,18 +670,27 @@ btStateT Counter<T_data>::backtrack() {
 
 template <typename T_data>
 void Counter<T_data>::cancelCurDL() {
-	for (int c = trail.size() - 1; c >= trail_lim.last(); c--) {
-		Var x = var(trail[c]);
-		assigns[x] = l_Undef;
-		polarity[x] = sign(trail[c]);
+	const int end_of_trail = trail.size();
+	int i = trail_lim.last(), j = i;
+	int bLevel = decisionLevel() - 1;
+
+	while (i < end_of_trail) {
+		Lit lit = trail[i++];
+		Var v = var(lit);
+		if (level(v) > bLevel) {
+			assigns[v] = l_Undef;
+			polarity[v] = sign(trail[v]);
+		} else {
+			trail[j] = lit;
+			j++;
+		}
 	}
 	qhead = trail_lim.last();
-	trail.shrink(trail.size() - trail_lim.last());
+	trail.shrink(end_of_trail - j);
 }
 
 template <typename T_data>
 lbool Counter<T_data>::solveSAT(void) {
-	newDecisionLevel();
 	int sat_start_dl = decisionLevel();
 
 	vec<Var> vs;
@@ -627,7 +698,6 @@ lbool Counter<T_data>::solveSAT(void) {
 	Component & c = cmpmgr.topComponent();
 	for (auto i = 0; (v = c[i]) != var_Undef; i++) {
 		decision[v] = true;
-		assert(value(v) == l_Undef);
 		if (value(v) == l_Undef)
 			vs.push(v);
 	}
@@ -656,13 +726,17 @@ lbool Counter<T_data>::solveSAT(void) {
 	for (auto i = 0; (v = c[i]) != var_Undef; i++)
 		decision[v] = false;
 
-	cancelUntil(sat_start_dl - 1);
+	if (status == l_True) {
+		cancelUntilChrono(sat_start_dl);
+	} else {
+		assert (decisionLevel() <= sat_start_dl);
+	}
 	return status;
 }
 
 template <typename T_data>
 lbool Counter<T_data>::searchBelow(int start_dl) {
-	int backtrack_level;
+	int backtrack_level = 0, conflict_level = 0;
 	int conflictC = 0;
 	vec<Lit> learnt_clause, selectors;
 	unsigned int nblevels, szWoutSelectors;
@@ -670,7 +744,7 @@ lbool Counter<T_data>::searchBelow(int start_dl) {
 	starts++;
 
 	for (;;) {
-		CRef confl = propagate();
+		CRef confl = propagateChrono();
 		if (confl != CRef_Undef) {
 			// CONFLICT
 			conflicts++;
@@ -679,7 +753,11 @@ lbool Counter<T_data>::searchBelow(int start_dl) {
 			if (conflicts % 5000 == 0 && var_decay < 0.95)
 				var_decay += 0.01;
 
-			if (decisionLevel() <= start_dl) {
+			ConflictData data = FindConflictLevel(confl);
+			conflict_level = data.nHighestLevel;
+
+      assert(conflict_level > 0);
+			if (conflict_level <= start_dl) {
 				// LAST CONFLICT
 				assert(decisionLevel() != 0);
 
@@ -689,8 +767,7 @@ lbool Counter<T_data>::searchBelow(int start_dl) {
 					backtrack_level, nblevels, szWoutSelectors);
 
 				if (learnt_clause.size() == 1) {
-					unitcls.push(learnt_clause[0]);
-					nbUn++;
+					// TODO: add UIP
 				} else {
 					CRef cr = ca.alloc(learnt_clause, true);
 					learnts.push(cr);
@@ -703,10 +780,12 @@ lbool Counter<T_data>::searchBelow(int start_dl) {
 
 					attachClause(cr);
 					claBumpActivity(ca[cr]);
+					// TODO: add UIP
 				}
 				varDecayActivity();
 				claDecayActivity();
 
+				cancelUntil(conflict_level);
 				return l_False;
 			}
 
@@ -724,38 +803,48 @@ lbool Counter<T_data>::searchBelow(int start_dl) {
 				}
 			}
 
-			learnt_clause.clear();
-			selectors.clear();
-			analyze(confl, learnt_clause, selectors, backtrack_level, nblevels,
-					szWoutSelectors);
+			if (data.bOnlyOneLitFromHighest) {
+				cancelUntilChrono(conflict_level - 1);
+				Clause& conflCls = ca[confl];
+				int nMaxLevel = level(var(conflCls[1]));
+				for (int nInd = 2; nInd < conflCls.size(); ++nInd) {
+					int nLevel = level(var(conflCls[nInd]));
+					if (nLevel > nMaxLevel) nMaxLevel = nLevel;
+				}
+				uncheckedEnqueue(ca[confl][0], nMaxLevel, confl);
 
-			lbdQueue.push(nblevels);
-			sumLBD += nblevels;
-
-			cancelUntil(
-					backtrack_level <= start_dl ? start_dl : backtrack_level);
-
-			if (learnt_clause.size() == 1) {
-				uncheckedEnqueue(learnt_clause[0]);
-				vardata[var(learnt_clause[0])].level = 0;
-				unitcls.push(learnt_clause[0]);
-				nbUn++;
 			} else {
-				CRef cr = ca.alloc(learnt_clause, true);
-				ca[cr].setLBD(nblevels);
-				ca[cr].setSizeWithoutSelectors(szWoutSelectors);
-				if (nblevels <= 2)
-					nbDL2++;
-				if (ca[cr].size() == 2)
-					nbBin++;
-				learnts.push(cr);
-				attachClause(cr);
 
-				claBumpActivity(ca[cr]);
-				uncheckedEnqueue(learnt_clause[0], cr);
+				learnt_clause.clear();
+				selectors.clear();
+				analyzeChrono(confl, learnt_clause, selectors, backtrack_level, nblevels, szWoutSelectors);
+
+				lbdQueue.push(nblevels);
+				sumLBD += nblevels;
+
+				cancelUntilChrono(
+						backtrack_level <= start_dl ? start_dl : backtrack_level);
+
+				if (learnt_clause.size() == 1) {
+					uncheckedEnqueue(learnt_clause[0], 0);
+					nbUn++;
+				} else {
+					CRef cr = ca.alloc(learnt_clause, true);
+					ca[cr].setLBD(nblevels);
+					ca[cr].setSizeWithoutSelectors(szWoutSelectors);
+					if (nblevels <= 2)
+						nbDL2++;
+					if (ca[cr].size() == 2)
+						nbBin++;
+					learnts.push(cr);
+					attachClause(cr);
+
+					claBumpActivity(ca[cr]);
+					uncheckedEnqueue(learnt_clause[0], backtrack_level, cr);
+				}
+				varDecayActivity();
+				claDecayActivity();
 			}
-			varDecayActivity();
-			claDecayActivity();
 
 		} else {
 			// Our dynamic restart, see the SAT09 competition compagnion paper
@@ -763,7 +852,7 @@ lbool Counter<T_data>::searchBelow(int start_dl) {
 					&& ((lbdQueue.getavg() * K) > (sumLBD / conflictsRestarts)))) {
 				lbdQueue.fastclear();
 				// progress_estimate = progressEstimate();
-				cancelUntil(start_dl);
+				cancelUntilChrono(start_dl);
 				return l_Undef;
 			}
 
@@ -807,6 +896,7 @@ void Counter<T_data>::printStats() const
 			printf("c o reduce dbs            = %-11"PRIu64"\n", nbReduceDB);
 			printf("c o learnts (uni/bin/lbd2)= %"PRIu64"/%"PRIu64"/%"PRIu64"\n", nbUn, nbBin, nbDL2);
 			printf("c o last learnts          = %-11d (%"PRIu64" learnts removed, %4.2f%%)\n", learnts.size(), nbRemovedClauses, nbRemovedClauses * 100 / (double)conflicts);
+			printf("c o max decisions         = %-11"PRIu64"\n", max_decs);
 
 			printStatsOfCM();
 			printf("c o isolated_pvars        = %"PRIu64"\n", nIsoPVars());

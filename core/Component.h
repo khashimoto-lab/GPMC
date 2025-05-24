@@ -23,8 +23,9 @@ typedef unsigned CacheEntryID;
 
 template <class T_data>
 class Decision {
-	int trail_pos_;
 	bool cur_branch_;
+	int solver_level_;
+	int trail_pos_;
 
 	unsigned basecomp_;
 	unsigned splitcompFrom_;	// [From, End)
@@ -39,16 +40,13 @@ class Decision {
 	NodeIndex nodes[2];
 
 public:
-	Decision(int trail_pos, unsigned basecomp) :
-		trail_pos_(trail_pos), cur_branch_(false), basecomp_(basecomp),
+	Decision(unsigned basecomp, int slevel) :
+		cur_branch_(false), solver_level_(slevel), trail_pos_(0), basecomp_(basecomp),
 		splitcompFrom_(basecomp + 1), splitcompEnd_(basecomp + 1), num_cur_branch_comps(0), models_{ 0, 0 }, hasmodel_{false, false} {
 		branch_weight_ = 1;
 		nodes[0] = nodes[1] = BOTTOM_NODE;
 	}
 
-	int trailPos() {
-		return trail_pos_;
-	}
 	unsigned baseComp() {
 		return basecomp_;
 	}
@@ -60,6 +58,20 @@ public:
 	void changeBranch() {
 		cur_branch_ = true;
 		num_cur_branch_comps = 0;
+	}
+
+	int solverLevel() {
+		return solver_level_;
+	}
+	void setSolverLevel(int level) {
+		solver_level_ = level;
+	}
+
+	int trailPos() {
+		return trail_pos_;
+	}
+	void setTrailPos(int pos) {
+		trail_pos_ = pos;
 	}
 
 	//
@@ -572,6 +584,9 @@ class ComponentManager {
 	uint64_t components;
 	uint64_t num_try_split;
 
+  uint64_t num_cancel_max_dec;
+  double cancel_max_dec_p;
+
 	vector<Decision<T_data>> dl_;
 	vector<Component*> comp_stack_;
 
@@ -584,7 +599,8 @@ class ComponentManager {
 
 public:
 	ComponentManager() :
-		npvars_(0), components(0), num_try_split(0), fixed_level_(0) {
+		npvars_(0), components(0), num_try_split(0), 
+		num_cancel_max_dec(0), cancel_max_dec_p(0.0), fixed_level_(0) {
 	}
 
 	~ComponentManager()
@@ -600,7 +616,7 @@ public:
 
 	int splitComponent(const vec<lbool>& assigns, const vec<T_data>& lit_weight = {});
 
-	Var pickBranchVar(const vec<double>& activity, const vec<double>& exscore);
+	Var pickBranchVar(const vec<lbool>& assigns, const vec<double>& activity, const vec<double>& exscore);
 
 	// Decision Stack
 	Decision<T_data>& topDecision() {
@@ -609,11 +625,14 @@ public:
 	Decision<T_data>& prevDecision() {
 		return *(dl_.end() - 2);
 	}
-	void pushDecision(int trailp) {
-		dl_.push_back(Decision<T_data>(trailp, comp_stack_.size() - 1));
+	void pushDecision(int slevel) {
+		dl_.push_back(Decision<T_data>(comp_stack_.size() - 1, slevel));
 	}
 	void popDecision() {
 		dl_.pop_back();
+	}
+	int decisionLevel() {
+		return dl_.size() - 1;
 	}
 
 	void setDecCand() {
@@ -657,16 +676,28 @@ public:
 			cache_.entry(comp_stack_.back()->id()).eraseComponentStackID();
 	}
 
-	void backjumpTo(int level) {
-		while (dl_.size() > (unsigned) level + 1) {
+	void popSomeDecisions(int level) {
+		int cancelDecs = 0;
+		while (topDecision().solverLevel() > level) {
 			if(config.ddnnf)
 				for(auto i : {0,1})
 					nodeMgr.deleteNodes(dl_.back().getBranchNodeIdx(i));
 			popDecision();
+			cancelDecs++;
 		}
-		while (comp_stack_.size() > dl_.back().baseComp() + 1)
+		// statistics
+		if (cancelDecs > num_cancel_max_dec) {
+			num_cancel_max_dec = cancelDecs;
+			cancel_max_dec_p = (double) cancelDecs / decisionLevel();
+		}
+
+		while (comp_stack_.size() > dl_.back().baseComp() + 1) {
 			popComponent();
-		dl_.back().setSplitCompsEnd(comp_stack_.size());
+		}
+	}
+
+	void shrinkDecisionComps() {
+		dl_.back ().setSplitCompsEnd (comp_stack_.size ());
 	}
 
 	// Debug
@@ -675,6 +706,7 @@ public:
 	void printStats() const {
 		printf("c o Components            = %"PRIu64"\n", components);
 		printf("c o Split                 = %"PRIu64"\n", num_try_split);
+    printf("c o max cancel decisions  = %-11"PRIu64" ( %.4f %%)\n", num_cancel_max_dec, cancel_max_dec_p);
 		cache_.printStats();
 	}
 
