@@ -679,7 +679,7 @@ void Counter<T_data>::cancelCurDL() {
 		Var v = var(lit);
 		if (level(v) > bLevel) {
 			assigns[v] = l_Undef;
-			polarity[v] = sign(trail[v]);
+			polarity[v] = sign(lit);
 		} else {
 			trail[j] = lit;
 			j++;

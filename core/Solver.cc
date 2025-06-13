@@ -476,7 +476,7 @@ void Solver::cancelUntilChrono(int bLevel)
     if (level(v) > bLevel) {
       assigns[v] = l_Undef;
       if(phase_saving > 1 || ((phase_saving == 1) && v > trail_lim.last())) {
-          polarity[v] = sign(trail[v]);
+          polarity[v] = sign(lit);
       }
       insertVarOrder(v);
     } else {
