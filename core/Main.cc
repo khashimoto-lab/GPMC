@@ -68,7 +68,9 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <signal.h>
 #include <zlib.h>
 #include <gmpxx.h>
-#include <mpfr/mpreal.h>
+#include <mpfr.h>
+#include <cmath>
+#include <iomanip>
 
 #include "utils/System.h"
 #include "utils/ParseUtils.h"
@@ -116,57 +118,103 @@ static void SetSigAct() {
 	signal(SIGXCPU, SIGINT_exit);
 }
 //=================================================================================================
-static mpfr::mpreal Log10(const mpz_class& num) {
-  assert(num >= 0);
-  if (num == 0) {
-    return -std::numeric_limits<double>::infinity();
-  }
-  mpfr::mpreal num1(num.get_mpz_t());
-  return mpfr::log10(num1);
+void PrintLog10_MPFR(mpfr_t& mpfr_value, bool neg=false) {
+	char buffer[100];
+	mpfr_t log10_value;
+
+	mpfr_init(log10_value);
+
+	mpfr_log10(log10_value, mpfr_value, MPFR_RNDN);
+
+	mpfr_sprintf(buffer, "%.15Rg", log10_value);
+
+	if(!neg)
+		std::cout << "c s log10-estimate " << buffer << std::endl;
+	else
+		std::cout << "c s neglog10-estimate " << buffer << std::endl;
+
+	// Clear MPFR variables
+	mpfr_clear(log10_value);
 }
-static void PrintLog10(const mpz_class& num) {
-  cout<<"c s log10-estimate "<<Log10(num)<<endl;
+// Function to print log10 for mpz_class using MPFR
+void PrintLog10(const mpz_class& num) {
+	mpfr_t mpfr_value;
+	mpfr_init(mpfr_value);
+
+	// Set mpfr_value from mpz_class num
+	mpfr_set_z(mpfr_value, num.get_mpz_t(), MPFR_RNDN);
+
+	// Use the common function to print log10
+	PrintLog10_MPFR(mpfr_value);
+
+	// Clear MPFR variable
+	mpfr_clear(mpfr_value);
 }
-static void PrintLog10(const mpfr::mpreal& num) {
-  cout<<"c s log10-estimate "<<mpfr::log10(num)<<endl;
+
+// Function to print log10 for mpq_class using MPFR
+void PrintLog10(const mpq_class& num) {
+	mpfr_t mpfr_value;
+	mpfr_init(mpfr_value);
+
+	bool neg = (num < 0);
+
+	// Set mpfr_value from mpq_class num
+	if(neg) {
+		mpq_class abs = -1*num;
+		mpfr_set_q(mpfr_value, abs.get_mpq_t(), MPFR_RNDN);
+	}
+	else
+		mpfr_set_q(mpfr_value, num.get_mpq_t(), MPFR_RNDN);
+
+	// Use the common function to print log10
+	PrintLog10_MPFR(mpfr_value, neg);
+
+	// Clear MPFR variable
+	mpfr_clear(mpfr_value);
 }
+
 static void printMode(Mode mode) {
 	switch(mode) {
 	case MC:	printf("c s type mc\n");break;
 	case WMC:	printf("c s type wmc\n");break;
 	case PMC:	printf("c s type pmc\n");break;
-	case WPMC:	printf("c s type wpmc\n");break;
+	case PWMC:	printf("c s type pwmc\n");break;
 	}
 }
 static void printResult(bool sat, Mode mode, const mpz_class& result) {
 	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
 	printMode(mode);
 	if(!sat) {
-		printf("c s exact arb int 0\n");
 		printf("c s log10-estimate -inf\n");
+		printf("c s exact arb int 0\n");
 	} else {
-		cout << "c s exact arb int " << result << endl;
-		cout.precision(15);
 		PrintLog10(result);
+		cout << "c s exact arb int " << result << endl;
 	}
 }
-static void printResult(bool sat, Mode mode, const mpfr::mpreal& result) {
+
+static void printResult(bool sat, Mode mode, const mpq_class& result) {
 	printf("s %s\n", sat ? "SATISFIABLE" : "UNSATISFIABLE");
 	printMode(mode);
-	if(!sat) {
-		printf("c s exact double prec-sci 0\n");
+	if(!sat || result == 0) {
 		printf("c s log10-estimate -inf\n");
+		printf("c s exact arb float 0\n");
 	} else {
-		int precision = mpfr::bits2digits(mpfr::mpreal::get_default_prec());
-		cout.precision(precision);
-		if(precision > 15) {
-			cout << "c o precision " << precision << endl;
-			cout << "c s exact double prec-sci " <<  result << endl;
-		} else {
-			cout << "c s exact double prec-sci " <<  result << endl;
+		if(result.get_num() == result.get_den()) {
+			printf("c s log10-estimate 0\n");
+			printf("c s exact arb float 1\n");
 		}
-		cout.precision(15);
-		PrintLog10(result);
+		else{
+			PrintLog10(result);
+			mpfr_t result_mpfr;
+			mpfr_init(result_mpfr);
+			mpfr_set_q(result_mpfr, result.get_mpq_t(), MPFR_RNDN);
+
+		    char buffer[100];
+		    mpfr_sprintf(buffer, "%.15Re", result_mpfr);
+			cout << "c s exact arb prec-sci " << buffer << endl;
+			mpfr_clear(result_mpfr);
+		}
 	}
 }
 
@@ -224,6 +272,8 @@ void main_mc(Counter<T_data>& S, string filename)
 		S.printStats();
 		printf("c o [Result]\n");
 		printResult(S.sat, S.config.mode, S.getMC());
+		if(S.config.output_rational)
+			cout << "c s exact arb frac "  << S.getMC() << endl;
 		if(S.config.ddnnf) doDNNF(S);
 		return;
 	}
@@ -241,6 +291,8 @@ void main_mc(Counter<T_data>& S, string filename)
 	printf("c o [Result]\n");
 	if(suc) {
 		printResult(S.sat, S.config.mode, S.getMC());
+		if(S.config.output_rational)
+			cout << "c s exact arb frac "  << S.getMC() << endl;
 		counter = NULL;
 		if(S.config.ddnnf) doDNNF(S);
 	}
@@ -280,7 +332,7 @@ int main(int argc, char** argv)
 			  case MC:		printf("c o Mode: Model Counting\n"); break;
 			  case WMC:	printf("c o Mode: Weighted Model Counting\n"); break;
 			  case PMC:	printf("c o Mode: Projected Model Counting\n"); break;
-			  case WPMC:	printf("c o Mode: Weighted Projected Model Counting\n"); break;
+			  case PWMC:	printf("c o Mode: Projected Weighted Model Counting\n"); break;
 			}
 			fflush(stdout);
 		}
@@ -320,14 +372,7 @@ int main(int argc, char** argv)
 			Counter<mpz_class> S(config);
 			main_mc(S, filename);
 		} else {
-			printf("c o WARNING! Weighted Model Counting is not supported.\n");
-			fflush(stdout);
-			exit(0);
-
-			if(config.cntr.precision > 15)
-				mpfr::mpreal::set_default_prec(mpfr::digits2bits(config.cntr.precision));
-
-			Counter<mpfr::mpreal> S(config);
+			Counter<mpq_class> S(config);
 			main_mc(S, filename);
 		}
 

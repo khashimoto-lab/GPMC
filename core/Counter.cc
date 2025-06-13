@@ -1,5 +1,4 @@
 #include <gmpxx.h>
-#include "mpfr/mpreal.h"
 #include "core/Counter.h"
 #include "mtl/Sort.h"
 #include "utils/System.h"
@@ -48,7 +47,7 @@ Counter<T_data>::Counter(Configuration& config_) :
 		wc = true, mc = true; break;
 	case PMC:
 		wc = false, mc = false; break;
-	case WPMC:
+	case PWMC:
 		wc = true, mc = false; break;
 	}
 
@@ -1158,4 +1157,4 @@ inline unsigned int Counter<T_data>::computeLBDMC(const Clause &c) {
 }
 
 template class GPMC::Counter<mpz_class>;
-template class GPMC::Counter<mpfr::mpreal>;
+template class GPMC::Counter<mpq_class>;

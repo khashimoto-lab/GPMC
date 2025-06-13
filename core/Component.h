@@ -7,7 +7,6 @@
 #include "ddnnf/DecisionTree.h"
 
 #include <gmpxx.h>
-#include "mpfr/mpreal.h"
 #include <vector>
 #include <math.h>
 
@@ -383,7 +382,7 @@ public:
 		return sizeof(CachedComponent)
 				+ PackedComponent<T_data>::data_size() * sizeof(unsigned)
 				+ sizeof(T_data);
-				// ToDo: How to estimate the actual data size of mpz_class/mpfr::mpreal
+				// ToDo: How to estimate the actual data size of mpz_class/mpq_class
 	}
 
 	void set_father(CacheEntryID f) {

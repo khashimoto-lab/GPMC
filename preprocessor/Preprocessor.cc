@@ -858,5 +858,5 @@ void Preprocessor<T_data>::Subsume()
 }
 
 template class PPMC::Preprocessor<mpz_class>;
-template class PPMC::Preprocessor<mpfr::mpreal>;
+template class PPMC::Preprocessor<mpq_class>;
 

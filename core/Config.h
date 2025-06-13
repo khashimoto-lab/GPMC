@@ -9,7 +9,7 @@ namespace GPMC {
 
 using namespace Glucose;
 
-enum Mode { MC, WMC, PMC, WPMC };
+enum Mode { MC, WMC, PMC, PWMC };
 
 struct ConfigCounter {
 	Mode mode;
@@ -21,6 +21,7 @@ struct ConfigCounter {
 	bool remove_sat_cls;
 	bool rmvsatcl_threshold;
 	bool natw;
+	bool output_rational;
 	std::string pp_outfile;
 	std::string td_outfile;
 	std::string nnf_outfile;

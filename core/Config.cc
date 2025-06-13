@@ -6,7 +6,7 @@ using namespace GPMC;
 // Options:
 
 static const char* omain = "GPMC -- MAIN";
-static IntOption		opt_mode		(omain, "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 3=wpmc).", 0, IntRange(0, 3));
+static IntOption		opt_mode		(omain, "mode", "Counting mode (0=mc, 1=wmc, 2=pmc, 3=pwmc).", 0, IntRange(0, 3));
 static IntOption		opt_precision	(omain, "prec", "Precision of output of weighted model counting", 15, IntRange(15,INT32_MAX));
 static IntOption		opt_vs			(omain, "vs", "Variable Selection Heuristics", 1, IntRange(0,1));
 static IntOption		opt_cachesize	(omain, "cs", "Maximum component cache size (MB) (not strict)", 4000, IntRange(1, INT32_MAX));
@@ -16,6 +16,7 @@ static BoolOption		opt_simp		(omain, "rmvsatcl", "Remove satisfied clauses", tru
 static IntOption		opt_simp_thd	(omain, "rmvsatclthd", "Threshold of removing satisfied clauses", 2, IntRange(0,INT32_MAX));
 static DoubleOption	opt_coef		(omain, "coef", "TDscore coefficient", 100, DoubleRange(0, true, 10000000, true));
 static BoolOption		opt_natw		(omain, "natw", "Natural number weight. If off, real number weight ([0, 1])", false);
+static BoolOption		opt_frac		(omain, "out_frac", "Output the weighted result as a rational number when weighted model counting", true);
 static BoolOption		opt_ddnnf		(omain, "ddnnf", "Constructing a d-DNNF", false);
 static StringOption	opt_nnfout		(omain, "nnfout", "Outfile for d-DNNF", "NULL");
 static StringOption	opt_varscore	(omain, "varscore", "Input file for giving scores of variables", "NULL");
@@ -52,7 +53,7 @@ static Mode int2Mode(int mode) {
 	case 0: return MC;break;
 	case 1: return WMC;break;
 	case 2: return PMC;break;
-	case 3: return WPMC;break;
+	case 3: return PWMC;break;
 	default:
 		assert(false);
 		return MC;
@@ -69,17 +70,18 @@ Configuration::Configuration() {
 	cntr.remove_sat_cls = opt_simp;
 	cntr.rmvsatcl_threshold = opt_simp_thd;
 	cntr.natw = opt_natw;
+	cntr.output_rational = opt_frac;
 	cntr.pp_outfile = opt_ppout;
 	cntr.td_outfile = opt_tdout;
 	cntr.nnf_outfile = opt_nnfout;
 	cntr.doTD = opt_td || opt_alwtd;
 	cntr.alwTD = opt_alwtd;
-	cntr.watchCand = (opt_mode == WMC || opt_mode == WPMC || opt_ddnnf);
+	cntr.watchCand = (opt_mode == WMC || opt_mode == PWMC || opt_ddnnf);
 	cntr.vs_infile = opt_varscore;
 	cntr.keepVarMap = opt_ddnnf || (cntr.vs_infile != "NULL");
 
 
-	cm.weighted = (opt_mode == WMC || opt_mode == WPMC);
+	cm.weighted = (opt_mode == WMC || opt_mode == PWMC);
 	cm.ddnnf = opt_ddnnf;
 	cm.varSelectionHueristics = opt_vs;
 	cm.cachesize = opt_cachesize;

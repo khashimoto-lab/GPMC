@@ -20,7 +20,7 @@ Options:
     - 0 : Model Counting
     - 1 : Weighted Model Counting
     - 2 : Projected Model Counting
-    - 3 : Weighted Projected Model Counting 
+    - 3 : Projected Weighted Model Counting
 
 -  -ddnnf  / -no-ddnnf  
 	construct a d-DNNF with a variable mapping (default: off).  
@@ -63,4 +63,4 @@ The weight of the positive literal of var 2 is 0.6, and that of the negative one
 
 ## Author
 [Kenji Hashimoto](https://www.trs.cm.is.nagoya-u.ac.jp/~k-hasimt/index-e.html),
-Nagoya University, Japan.
+Kagawa University, Japan.

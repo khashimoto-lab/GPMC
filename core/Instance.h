@@ -5,7 +5,6 @@
 #include "core/SolverTypes.h"
 
 #include <gmpxx.h>
-#include "mpfr/mpreal.h"
 
 namespace GPMC {
 
@@ -42,10 +41,10 @@ public:
 	bool weighted;
 	bool projected;
 
-	// For WMC/WPMC
+	// For WMC/PWMC
 	std::vector<T_data> lit_weights;
 
-	// For PMC/WPMC
+	// For PMC/PWMC
 	int npvars;
 	std::vector<bool> ispvars;
 	std::vector<Glucose::Var> pvars;
