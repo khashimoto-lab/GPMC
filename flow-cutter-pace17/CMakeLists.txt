@@ -6,7 +6,10 @@ SET(flowcutter_SOURCES
 
 add_compile_options("$<$<CONFIG:Debug>:-O0>")
 
-add_library(flowcutter ${flowcutter_SOURCES})
-
-target_compile_definitions(flowcutter 
-  PRIVATE $<$<CONFIG:Debug>:DEBUG>)
+if(GPMC_USE_STATIC_LIBS)
+	add_library(flowcutter_static STATIC ${flowcutter_SOURCES})
+	target_compile_definitions(flowcutter_static PRIVATE $<$<CONFIG:Debug>:DEBUG>)
+else()
+	add_library(flowcutter_shared SHARED ${flowcutter_SOURCES})
+	target_compile_definitions(flowcutter_shared PRIVATE $<$<CONFIG:Debug>:DEBUG>)
+endif()

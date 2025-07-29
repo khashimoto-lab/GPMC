@@ -7,10 +7,10 @@ add_compile_options("$<$<CXX_COMPILER_ID:GNU>:-Wno-literal-suffix;-Wno-class-mem
 add_compile_options("$<$<CXX_COMPILER_ID:Clang>:-Wno-reserved-user-defined-literal;-Wno-gnu-array-member-paren-init>")
 add_compile_options("$<$<CXX_COMPILER_ID:AppleClang>:-Wno-redundant-move;-Wno-undefined-var-template;-Wno-reserved-user-defined-literal;-Wno-gnu-array-member-paren-init;-std=c++11>")
 
-add_library(glucose STATIC 
-	core/Solver.cc utils/Options.cc utils/System.cc
-	)
-target_compile_definitions(glucose 
-  PRIVATE $<$<CONFIG:Debug>:DEBUG>
-           __STDC_FORMAT_MACROS __STDC_LIMIT_MACROS
-)
+if(GPMC_USE_STATIC_LIBS)
+  add_library(glucose_static STATIC core/Solver.cc utils/Options.cc utils/System.cc)
+  target_compile_definitions(glucose_static PRIVATE $<$<CONFIG:Debug>:DEBUG> __STDC_FORMAT_MACROS __STDC_LIMIT_MACROS)
+else()
+  add_library(glucose_shared SHARED core/Solver.cc utils/Options.cc utils/System.cc)
+  target_compile_definitions(glucose_shared PRIVATE $<$<CONFIG:Debug>:DEBUG> __STDC_FORMAT_MACROS __STDC_LIMIT_MACROS)
+endif()
