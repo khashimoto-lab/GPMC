@@ -84,7 +84,8 @@ bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
 {
 	ins = instance;
 
-	printCNFInfo("Init", true);
+	if(config.verb >= 0)
+		printCNFInfo("Init", true);
 
 	if(ins->unsat || !SAT_FLE())
 		return false;
@@ -137,7 +138,8 @@ bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
 		}
 	}
 
-	printCNFInfo("Simp");
+	if(config.verb >= 0)
+		printCNFInfo("Simp");
 
 	ins = NULL;
 

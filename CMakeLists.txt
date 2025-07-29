@@ -46,10 +46,12 @@ target_compile_definitions(gpmc
           __STDC_FORMAT_MACROS __STDC_LIMIT_MACROS
 )
 
-add_executable(gpmc-bin src/Main.cc)
-set_target_properties(gpmc-bin PROPERTIES OUTPUT_NAME gpmc)
-target_link_libraries(gpmc-bin PRIVATE gpmc)
-target_link_options(gpmc-bin PRIVATE $<$<BOOL:${GPMC_STATIC_BUILD}>:-static>)
+if(NOT GPMC_BUILD_PYTHON)
+  add_executable(gpmc-bin src/Main.cc)
+  set_target_properties(gpmc-bin PROPERTIES OUTPUT_NAME gpmc)
+  target_link_libraries(gpmc-bin PRIVATE gpmc)
+  target_link_options(gpmc-bin PRIVATE $<$<BOOL:${GPMC_STATIC_BUILD}>:-static>)
+endif()
 
 # === Pythonバインディング（必要なら） ===
 if(GPMC_BUILD_PYTHON AND NOT GPMC_USE_STATIC_LIBS)

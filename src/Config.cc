@@ -25,7 +25,7 @@ static StringOption	opt_ppout		(opp, "ppout", "Outfile for Simplified CNF", "NUL
 static IntOption		opt_varlimit	(opp, "varlim", "limit on #Vars in Preprocessing.", 200000, IntRange(0, INT32_MAX));
 static DoubleOption	opt_pptimelim	(opp, "pptimelim", "Time threshold of preprocessing (not precise).", 120, DoubleRange(0, true, DBL_MAX, true));
 static IntOption		opt_pprep		(opp, "ppreps",	"#reps of the main loop of preprocessing.", 20, IntRange(1, INT32_MAX));
-static IntOption		opt_ppverb		(opp, "ppverb", "Preprocessing verbosity level (0=some, 1=more).", 0, IntRange(0, 1));
+static IntOption		opt_ppverb		(opp, "ppverb", "Preprocessing verbosity level (-1=none, 0=some, 1=more).", 0, IntRange(-1, 1));
 static BoolOption		opt_ee			(opp, "pp_ee", "Use equivalent literal elimination.", true);
 static IntOption		opt_ee_varlim	(opp, "ee-varlim", "limit on #Vars in equivalent literal elimination.", 150000, IntRange(0, INT32_MAX));
 static BoolOption		opt_ve			(opp, "pp_ve", "Use variable elimination.", true);
