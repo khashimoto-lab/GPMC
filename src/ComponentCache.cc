@@ -1,7 +1,7 @@
 #include <iostream>
 #include <gmpxx.h>
 #include "mpfr/mpreal.h"
-#include "core/Component.h"
+#include "GPMC/Component.h"
 
 // #define USE_SYSINFO
 

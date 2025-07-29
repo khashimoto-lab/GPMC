@@ -1,4 +1,4 @@
-#include "../lib_sharpsat_td/subsumer.hpp"
+#include "GPMC/preprocessor/lib_sharpsat_td/subsumer.hpp"
 
 #include <vector>
 #include <algorithm>

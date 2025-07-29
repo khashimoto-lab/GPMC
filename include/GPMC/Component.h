@@ -1,9 +1,9 @@
 #ifndef COMPONENT_H_
 #define COMPONENT_H_
 
-#include "mtl/Alloc.h"
-#include "core/SolverTypes.h"
-#include "core/Config.h"
+#include "Glucose/mtl/Alloc.h"
+#include "Glucose/core/SolverTypes.h"
+#include "GPMC/Config.h"
 #include "ddnnf/DecisionTree.h"
 
 #include <gmpxx.h>

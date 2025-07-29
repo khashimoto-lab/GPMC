@@ -11,7 +11,7 @@
 
 #include "flow-cutter-pace17/src/array_id_func.h"
 #include "flow-cutter-pace17/src/cell.h"
-#include "TreeDecomposition.h"
+#include "GPMC/preprocessor/TreeDecomposition.h"
 
 class IFlowCutter {
 public:

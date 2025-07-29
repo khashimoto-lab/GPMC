@@ -11,8 +11,8 @@
 #include <vector>
 #include <algorithm>
 
-#include "lib_sharpsat_td/bitset.hpp"
-#include "core/SolverTypes.h"
+#include "GPMC/preprocessor/lib_sharpsat_td/bitset.hpp"
+#include "Glucose/core/SolverTypes.h"
 
 class Graph {
 public:

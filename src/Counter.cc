@@ -1,8 +1,8 @@
 #include <gmpxx.h>
 #include "mpfr/mpreal.h"
-#include "core/Counter.h"
-#include "mtl/Sort.h"
-#include "utils/System.h"
+#include "GPMC/Counter.h"
+#include "Glucose/mtl/Sort.h"
+#include "Glucose/utils/System.h"
 
 #include <cstdio>
 #include <cstdlib>

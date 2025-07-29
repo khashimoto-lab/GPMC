@@ -1,4 +1,4 @@
-#include "core/Config.h"
+#include "GPMC/Config.h"
 
 using namespace GPMC;
 

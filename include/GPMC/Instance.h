@@ -2,7 +2,7 @@
 #define Instance_h
 
 #include <vector>
-#include "core/SolverTypes.h"
+#include "Glucose/core/SolverTypes.h"
 
 #include <gmpxx.h>
 #include "mpfr/mpreal.h"

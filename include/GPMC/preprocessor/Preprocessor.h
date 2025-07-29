@@ -5,16 +5,16 @@
 #include <iostream>
 #include <fstream>
 
-#include "core/Config.h"
-#include "core/Instance.h"
-#include "gmpxx.h"
-#include "mpfr/mpreal.h"
+#include "GPMC/Config.h"
+#include "GPMC/Instance.h"
+#include <gmpxx.h>
+#include <mpfr/mpreal.h>
 
-#include "preprocessor/IFlowCutter.h"
-#include "preprocessor/TreeDecomposition.h"
+#include "GPMC/preprocessor/IFlowCutter.h"
+#include "GPMC/preprocessor/TreeDecomposition.h"
 
-#include "mtl/Vec.h"
-#include "utils/System.h"
+#include "Glucose/mtl/Vec.h"
+#include "Glucose/utils/System.h"
 
 namespace PPMC {
 

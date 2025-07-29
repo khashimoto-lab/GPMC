@@ -1,5 +1,5 @@
-#include "core/Component.h"
-#include "mtl/Sort.h"
+#include "GPMC/Component.h"
+#include "Glucose/mtl/Sort.h"
 #include <utility>
 
 using namespace GPMC;

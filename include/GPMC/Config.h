@@ -3,7 +3,7 @@
 
 #include <string>
 #include <float.h>
-#include "utils/Options.h"
+#include "Glucose/utils/Options.h"
 
 namespace GPMC {
 

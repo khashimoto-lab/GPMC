@@ -1,11 +1,11 @@
 #ifndef Counter_h
 #define Counter_h
 
-#include "core/Solver.h"
-#include "core/Component.h"
-#include "core/Config.h"
-#include "core/Instance.h"
-#include "preprocessor/Preprocessor.h"
+#include "Glucose/core/Solver.h"
+#include "GPMC/Component.h"
+#include "GPMC/Config.h"
+#include "GPMC/Instance.h"
+#include "GPMC/preprocessor/Preprocessor.h"
 #include "ddnnf/DecisionTree.h"
 
 using namespace Glucose;

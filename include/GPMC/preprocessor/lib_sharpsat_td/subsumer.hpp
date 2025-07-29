@@ -4,7 +4,7 @@
 #include <map>
 
 #include "../lib_sharpsat_td/utils.hpp"
-#include "core/SolverTypes.h"
+#include "Glucose/core/SolverTypes.h"
 
 namespace sspp {
 class Subsumer{

@@ -70,13 +70,13 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <gmpxx.h>
 #include <mpfr/mpreal.h>
 
-#include "utils/System.h"
-#include "utils/ParseUtils.h"
-#include "utils/Options.h"
-#include "core/Dimacs.h"
-#include "core/Config.h"
-#include "preprocessor/Preprocessor.h"
-#include "core/Counter.h"
+#include "Glucose/utils/System.h"
+#include "Glucose/utils/ParseUtils.h"
+#include "Glucose/utils/Options.h"
+#include "Glucose/core/Dimacs.h"
+#include "GPMC/Config.h"
+#include "GPMC/preprocessor/Preprocessor.h"
+#include "GPMC/Counter.h"
 
 
 using namespace Glucose;

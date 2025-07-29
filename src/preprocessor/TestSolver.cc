@@ -1,4 +1,4 @@
-#include "TestSolver.h"
+#include "GPMC/preprocessor/TestSolver.h"
 
 using namespace PPMC;
 using namespace Glucose;

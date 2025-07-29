@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "core/Solver.h"
+#include "Glucose/core/Solver.h"
 
 namespace PPMC {
 

@@ -5,7 +5,7 @@
  *      Author: k-hasimt
  */
 
-#include "TreeDecomposition.h"
+#include "GPMC/preprocessor/TreeDecomposition.h"
 
 #include <iostream>
 #include <assert.h>

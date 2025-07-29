@@ -1,7 +1,7 @@
-#include "preprocessor/Preprocessor.h"
-#include "core/SolverTypes.h"
-#include "lib_sharpsat_td/subsumer.hpp"
-#include "TestSolver.h"
+#include "GPMC/preprocessor/Preprocessor.h"
+#include "Glucose/core/SolverTypes.h"
+#include "GPMC/preprocessor/lib_sharpsat_td/subsumer.hpp"
+#include "GPMC/preprocessor/TestSolver.h"
 
 #include <unordered_map>
 

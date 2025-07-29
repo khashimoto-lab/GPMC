@@ -25,9 +25,9 @@
 //#include "flow-cutter-pace17/src/min_max.h"
 #include "flow-cutter-pace17/src/heap.h"
 
-#include "preprocessor/IFlowCutter.h"
-#include "preprocessor/TreeDecomposition.h"
-#include "utils/System.h"
+#include "GPMC/preprocessor/IFlowCutter.h"
+#include "GPMC/preprocessor/TreeDecomposition.h"
+#include "Glucose/utils/System.h"
 
 // #include <limits>
 // #include <signal.h>

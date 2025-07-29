@@ -1,6 +1,6 @@
-#include "../core/Instance.h"
+#include "GPMC/Instance.h"
 
-#include "mtl/Sort.h"
+#include "Glucose/mtl/Sort.h"
 
 #include <iostream>
 #include <fstream>
