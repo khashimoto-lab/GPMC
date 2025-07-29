@@ -33,6 +33,7 @@ public:
 	// Methods
 	//
 	void load(std::istream& in); 					// load an input instance
+	void loadInstance(Instance<T_data>& i);			// load a given instance object
 	bool preprocess();								// preprocessing for simplification
 	void setExtraVarScore();							// set exscore
 	bool countModels();		    					// main count method
@@ -53,6 +54,8 @@ public:
 	// options
 	ConfigCounter config;
 	ConfigTreeDecomposition tdconfig;
+
+	int verbosity_c;	// verbosity level
 
 	/// statistics
 	uint64_t conflicts_pre, decisions_pre, propagations_pre;
@@ -122,7 +125,6 @@ protected:
 
 	progressT progress;		// counter progress
 
-	int verbosity_c;			// verbosity level
 	bool mc;					// mc or pmc
 	bool wc;					// weighted or no-weighted
 

@@ -20,6 +20,7 @@ Counter<T_data>::Counter(Configuration& config_) :
 , npmodels           (0)
 , config				(config_.cntr)
 , tdconfig				(config_.td)
+, verbosity_c        (1)
 , conflicts_pre      (0)
 , decisions_pre      (0)
 , propagations_pre   (0)
@@ -43,7 +44,6 @@ Counter<T_data>::Counter(Configuration& config_) :
 , on_bj				(config_.cntr.backjump)
 , on_simp				(config_.cntr.remove_sat_cls)
 , progress				(INIT)
-, verbosity_c        (1)
 {
 	verbosity = 0;
 	showModel = false;
@@ -81,6 +81,14 @@ void Counter<T_data>::load(std::istream& in)
 		}
 	}
 
+	progress = LOADED;
+}
+//=================================================================================================
+// Load a given instance object
+template <typename T_data>
+void Counter<T_data>::loadInstance(Instance<T_data>& i)
+{
+	ins = i;
 	progress = LOADED;
 }
 //=================================================================================================
@@ -987,23 +995,25 @@ void Counter<T_data>::computeTDScore()
 {
 	bool conditionOnCNF = ins.vars > 20 && ins.vars <= tdconfig.varlim && ins.learnts.size() <= ins.clauses.size();
 	if(!(conditionOnCNF || config.alwTD)) {
-		printf("c o skip td\n");
+		if(verbosity_c) printf("c o skip td\n");
 		return;
 	}
 
 	Graph Primal(ins.vars, ins.clauses);
-	printf("c o Primal graph: nodes %d, edges %d\n", ins.vars, Primal.numEdges());
+	if(verbosity_c) printf("c o Primal graph: nodes %d, edges %d\n", ins.vars, Primal.numEdges());
 
 	bool conditionOnPrimalGraph =
 			(double)Primal.numEdges()/((long) ins.vars * ins.vars) <= tdconfig.denselim
 			&& (double)Primal.numEdges()/ins.vars <= tdconfig.ratiolim;
 	if(!(conditionOnPrimalGraph || config.alwTD)) {
-		printf("c o skip td\n");
+		if(verbosity_c) printf("c o skip td\n");
 		return;
 	}
 
 	// run FlowCutter
-	printf("c o FlowCutter is running...\n");fflush(stdout);
+	if(verbosity_c) {
+		printf("c o FlowCutter is running...\n");fflush(stdout);
+	}
 	IFlowCutter FC(ins.vars, Primal.numEdges(), tdconfig.timelim);
 	FC.importGraph(Primal);
 	Primal.clear();
@@ -1041,7 +1051,7 @@ void Counter<T_data>::computeTDScore()
 		}
 	}
 
-	if(uselessTD)
+	if(uselessTD && verbosity_c)
 		printf("c o ignore td\n");
 }
 
