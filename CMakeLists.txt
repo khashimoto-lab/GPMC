@@ -54,6 +54,7 @@ if(NOT GPMC_BUILD_PYTHON)
 endif()
 
 # === Pythonバインディング（必要なら） ===
-if(GPMC_BUILD_PYTHON AND NOT GPMC_USE_STATIC_LIBS)
+if(GPMC_BUILD_PYTHON)
+  set_target_properties(gpmc PROPERTIES POSITION_INDEPENDENT_CODE ON)
   add_subdirectory(python)
 endif()
