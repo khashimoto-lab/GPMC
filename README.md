@@ -62,5 +62,6 @@ The set of projection variables is { 2, 3 }.
 The weight of the positive literal of var 2 is 0.6, and that of the negative one is 0.4.
 
 ## Author
-[Kenji Hashimoto](hashimoto.kenji@kagawa-u.ac.jp),
+
+[Kenji Hashimoto](mailto:hashimoto.kenji@kagawa-u.ac.jp),  
 Kagawa University, Japan.
