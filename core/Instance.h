@@ -16,7 +16,7 @@ class Instance {
 public:
 	Instance();
 
-	void load			(std::istream& in, bool weighted, bool projected, bool ddnnf);
+	void load			(std::istream& in, bool weighted, bool projected, bool ddnnf, bool& maybeMC);
 	bool addClause	(std::vector<Glucose::Lit>& lits, bool learnt=false);
 
 	Glucose::lbool value (Glucose::Var x) const;

@@ -123,7 +123,7 @@ mpq_class string_to_mpq(const std::string& str) {
 }
 
 template <class T_data>
-void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool keepVarMap) {
+void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool keepVarMap, bool& maybeMC) {
 	this->weighted = weighted;
 	this->projected = projected;
 	this->keepVarMap = keepVarMap;
@@ -135,6 +135,7 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 	bool typeSpecified = false;
 	npvars = 0;
 	ispvars.clear();
+	maybeMC = false;
 
 	vector<bool> set_weight;
 
@@ -142,6 +143,9 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 		if (buf.empty()) continue;
 		tokens.clear();
 		Tokens(buf, tokens);
+
+		if(tokens[0] == "c" && tokens[1] == "t" && tokens[2] == "mc") maybeMC = true;
+		if(tokens[0] == "c" && tokens[1] == "t" && tokens[2] == "wmc") maybeMC = true;
 
 		if(tokens.size() == 0) continue;
 		else if (tokens[0] == "p") {
@@ -180,6 +184,7 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 				}
 				else if(tokens[2] == "show") { // Read the list of projected vars
 					if(projected && tokens.back() == "0") {
+						maybeMC = false;
 						for(int i=3; i<tokens.size()-1; i++) {
 							int v = stoi(tokens[i]);
 							if(v-1 >= ispvars.size())
@@ -230,6 +235,12 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 		}
 	}
 
+	if (maybeMC) {
+		ispvars.clear();
+		ispvars.resize(vars, true);
+		npvars = vars;
+	}
+
 	learnts.clear();
 
 	if(weighted) {
@@ -259,7 +270,7 @@ void Instance<T_data>::load(istream& in, bool weighted, bool projected, bool kee
 
 	if(keepVarMap) {
 		gmap.clear();
-		if(projected) {
+		if(projected && !maybeMC) {
 			for(auto v : pvars)
 				gmap.push_back(mkLit(v));
 		} else {

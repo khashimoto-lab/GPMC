@@ -59,7 +59,18 @@ Counter<T_data>::Counter(Configuration& config_) :
 template <typename T_data>
 void Counter<T_data>::load(std::istream& in)
 {
-	ins.load(in, wc, !mc, config.keepVarMap);
+	bool maybeMC = false;
+	ins.load(in, wc, !mc, config.keepVarMap, maybeMC);
+	if (!mc && maybeMC) {
+		mc = true;
+		if (!wc) {
+			printf("c o Change from Projected Model Counting Mode to Model Counting Mode because of 'c t mc'\n");
+			config.mode = MC;
+		} else {
+			printf("c o Change from Projected Weighted Model Counting Mode to Weighted Model Counting Mode because of 'c t wmc'\n");
+			config.mode = WMC;
+		}
+	}
 
 	if(config.vs_infile != "NULL") {
 		std::ifstream vin(config.vs_infile);
