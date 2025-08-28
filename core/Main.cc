@@ -260,12 +260,21 @@ void main_mc(Counter<T_data>& S, string filename)
 	printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
 	fflush(stdout);
 
-	// Simplifying
-	printf("c o Simplification starts...\n");
-	bool done = S.preprocess();
-	printf("c o Simplification finished.\n");
-	printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
-	fflush(stdout);
+	bool done = false;
+	if (S.config.doPreprocss) {
+		// Simplifying
+		printf("c o Simplification starts...\n");
+		done = S.preprocess();
+		printf("c o Simplification finished.\n");
+		printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+		fflush(stdout);
+	} else {
+		// Skip Simplifying
+		printf("c o skip simplification\n");
+		done = S.compact();
+		printf("c o Elapsed time %.2lf s\nc o\n", cpuTime());
+		fflush(stdout);
+	}
 
 	if(done) {
 		printf("c o Solved by simplification.\n");

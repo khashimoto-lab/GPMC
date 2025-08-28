@@ -22,6 +22,7 @@ static StringOption	opt_nnfout		(omain, "nnfout", "Outfile for d-DNNF", "NULL");
 static StringOption	opt_varscore	(omain, "varscore", "Input file for giving scores of variables", "NULL");
 
 static const char* opp = "GPMC -- Preprocessor";
+static BoolOption		opt_pp			(opp, "pp", "Preprocessor", true);
 static StringOption	opt_ppout		(opp, "ppout", "Outfile for Simplified CNF", "NULL");
 static IntOption		opt_varlimit	(opp, "varlim", "limit on #Vars in Preprocessing.", 200000, IntRange(0, INT32_MAX));
 static DoubleOption	opt_pptimelim	(opp, "pptimelim", "Time threshold of preprocessing (not precise).", 120, DoubleRange(0, true, DBL_MAX, true));
@@ -74,6 +75,7 @@ Configuration::Configuration() {
 	cntr.pp_outfile = opt_ppout;
 	cntr.td_outfile = opt_tdout;
 	cntr.nnf_outfile = opt_nnfout;
+	cntr.doPreprocss = opt_pp;
 	cntr.doTD = opt_td || opt_alwtd;
 	cntr.alwTD = opt_alwtd;
 	cntr.watchCand = (opt_mode == WMC || opt_mode == PWMC || opt_ddnnf);

@@ -47,6 +47,8 @@ public:
 
 	bool Simplify(GPMC::Instance<T_data>* ins);
 
+	bool Compact(GPMC::Instance<T_data>* ins);
+
 private:
 	bool SAT_FLE();
 	bool Strengthen();

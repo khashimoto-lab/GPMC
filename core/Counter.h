@@ -34,6 +34,7 @@ public:
 	//
 	void load(std::istream& in); 					// load an input instance
 	bool preprocess();								// preprocessing for simplification
+	bool compact();												// skip preprocessing, only rename vars
 	void setExtraVarScore();							// set exscore
 	bool countModels();		    					// main count method
 	void printStats() const;							// print statistics

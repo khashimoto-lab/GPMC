@@ -87,6 +87,53 @@ void Counter<T_data>::load(std::istream& in)
 	progress = LOADED;
 }
 //=================================================================================================
+// Compact
+template <typename T_data>
+bool Counter<T_data>::compact()
+{
+	sat = pp.Compact(&ins);
+
+	bool done = ins.unsat || ins.vars == 0;
+
+	if(ins.unsat) {
+		npmodels = 0;
+		if(config.ddnnf) cmpmgr.setRoot(BOTTOM_NODE);
+		progress = COMPLETED_BYPP;
+	}
+	else if (ins.vars == 0) {
+		if(wc) {
+			npmodels = ins.gweight;
+			gweight = ins.gweight;
+		}
+		else {
+			npmodels = ((T_data)1) << ins.freevars;
+			npvars_isolated = ins.freevars;
+		}
+
+		if(config.ddnnf)
+			cmpmgr.setRoot(TOP_NODE);
+
+		progress = COMPLETED_BYPP;
+	}
+	else {
+		progress = PREPROCESSED;
+		if (config.pp_outfile != "NULL") {
+			printf("c o outputing simplified CNF...");
+			ofstream out(config.pp_outfile);
+			if (out) {
+				ins.toDimacs(out);
+				out.close();
+				printf("done\n");
+			}
+			else {
+				std::cerr << "Cannot open file:" << config.pp_outfile << std::endl;
+			}
+		}
+	}
+
+	return done;
+}
+//=================================================================================================
 // Preprocessing
 template <typename T_data>
 bool Counter<T_data>::preprocess()

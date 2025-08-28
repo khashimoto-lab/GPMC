@@ -78,6 +78,25 @@ void Identifier::MergeEquivClasses(int c1, int c2)
 	num_elem--;
 }
 
+// Rename vars
+template <class T_data>
+bool Preprocessor<T_data>::Compact(GPMC::Instance<T_data>* instance)
+{
+	ins = instance;
+	printCNFInfo("Init", true);
+
+	TestSolver S(ins->vars, ins->clauses, ins->learnts, ins->assignedLits);
+  Compact(S.getAssigns());
+
+	if(S.Solve() == l_False) {
+		ins->unsat = true;
+		return false;
+	}
+
+  ins = NULL;
+	return true;
+}
+
 // Preprocessor
 template <class T_data>
 bool Preprocessor<T_data>::Simplify(GPMC::Instance<T_data>* instance)
