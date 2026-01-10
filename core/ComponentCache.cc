@@ -70,7 +70,8 @@ void ComponentCache<T_data>::init(int cachesize) {
 }
 
 template <class T_data>
-CacheEntryID ComponentCache<T_data>::createEntryFor(Component &comp, unsigned stack_id) {
+CacheEntryID ComponentCache<T_data>::createEntryFor(Component &comp, unsigned stack_id, const vec<uint32_t> &occlists_lit, const vec<int> &occ_pool_lit,
+    const ClauseAllocator &ca, const vec<CRef> &clauses, int npvars, const ConfigComponentManager &config) {
 	my_time_++;
 	CacheEntryID id;
 
@@ -84,14 +85,14 @@ CacheEntryID ComponentCache<T_data>::createEntryFor(Component &comp, unsigned st
 		if (entry_base_.capacity() == entry_base_.size()) {
 			entry_base_.reserve(2 * entry_base_.size());
 		}
-		entry_base_.push_back(new CachedComponent<T_data>(comp));
+		entry_base_.push_back(new CachedComponent<T_data>(comp, occlists_lit, occ_pool_lit, ca, clauses, npvars, config));
 		id = entry_base_.size() - 1;
 	} else {
 		id = free_entry_base_slots_.back();
 		assert(id < entry_base_.size());
 		assert(entry_base_[id] == nullptr);
 		free_entry_base_slots_.pop_back();
-		entry_base_[id] = new CachedComponent<T_data>(comp);
+		entry_base_[id] = new CachedComponent<T_data>(comp, occlists_lit, occ_pool_lit, ca, clauses, npvars, config);
 	}
 	entry_base_[id]->setComponentStackID(stack_id);
 	entry_base_[id]->set_creation_time(my_time_);
@@ -160,9 +161,12 @@ bool ComponentCache<T_data>::requestValueOf(Component &comp, T_data &rn, NodeInd
 
 	for (auto it = table_[v]->begin(); it != table_[v]->end(); it++) {
 		pcomp = &entry(*it);
+    bool trad_hit = true;
 		if (packedcomp.hashkey() == pcomp->hashkey()
-				&& pcomp->equals(packedcomp)) {
+				&& pcomp->equals(packedcomp, trad_hit)) {
+      if (!trad_hit) num_sym_onlyhits_++;
 			num_cache_hits_++;
+      if (packedcomp.isocc()) num_sym_cache_hits_++;
 
 			sum_cache_hit_sizes_ += pcomp->num_variables();
 			rn = pcomp->model_count();

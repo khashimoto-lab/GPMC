@@ -19,6 +19,12 @@ static BoolOption		opt_natw		(omain, "natw", "Natural number weight. If off, rea
 static BoolOption		opt_ddnnf		(omain, "ddnnf", "Constructing a d-DNNF", false);
 static StringOption	opt_nnfout		(omain, "nnfout", "Outfile for d-DNNF", "NULL");
 static StringOption	opt_varscore	(omain, "varscore", "Input file for giving scores of variables", "NULL");
+// * for IsoCC
+static BoolOption		opt_isocc   (omain, "useIsoCC", "enable isomorphic component caching.", false);
+static Int64Option  opt_isocc_lb  (omain, "isoLB", "use isomorphic component caching only for components of size at least n (must be used with -useIsoCC).", 10, Int64Range(0, UINT32_MAX));
+static Int64Option  opt_isocc_ub  (omain, "isoUB", "use isomorphic component caching only for components of size at most n (must be used with -useIsoCC). If n = -1 then not using upper bound.", 250, Int64Range(-1, INT32_MAX));
+static Int64Option  opt_isocc_pvar  (omain, "isoPvar", "use isomorphic component caching only for components of pvars at least n (must be used with -useIsoCC).", 5, Int64Range(1, INT32_MAX));
+static BoolOption		opt_isocc_st  (omain, "isoStats", "Statistics for isomorphic component caching.", false);
 
 static const char* opp = "GPMC -- Preprocessor";
 static StringOption	opt_ppout		(opp, "ppout", "Outfile for Simplified CNF", "NULL");
@@ -77,12 +83,24 @@ Configuration::Configuration() {
 	cntr.watchCand = (opt_mode == WMC || opt_mode == WPMC || opt_ddnnf);
 	cntr.vs_infile = opt_varscore;
 	cntr.keepVarMap = opt_ddnnf || (cntr.vs_infile != "NULL");
+  cntr.use_isocc = opt_isocc;
+  cntr.isocc_lb = opt_isocc_lb;
+  cntr.isocc_ub = opt_isocc_ub;
+  cntr.isocc_pvar = opt_isocc_pvar;
+  cntr.isocc_ub_set = ((int) cntr.isocc_ub) > -1;
+  cntr.isocc_stats = opt_isocc_st;
 
 
 	cm.weighted = (opt_mode == WMC || opt_mode == WPMC);
 	cm.ddnnf = opt_ddnnf;
 	cm.varSelectionHueristics = opt_vs;
 	cm.cachesize = opt_cachesize;
+  cm.use_isocc = opt_isocc;
+  cm.isocc_lb = opt_isocc_lb;
+  cm.isocc_ub = opt_isocc_ub;
+  cm.isocc_pvar = opt_isocc_pvar;
+  cm.isocc_ub_set = ((int) cm.isocc_ub) > -1;
+  cm.isocc_stats = opt_isocc_st;
 
 	pp.varlimit = opt_varlimit;
 	pp.timelim = opt_pptimelim;

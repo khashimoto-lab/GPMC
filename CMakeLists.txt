@@ -21,6 +21,18 @@ add_library(gpmc STATIC
 	preprocessor/lib_sharpsat_td/subsumer.cpp
 	preprocessor/TreeDecomposition.cc preprocessor/IFlowCutter.cc
 	)
+
+
+find_package(Boost REQUIRED)
+find_library(NAUTY_LIB nauty.a ${PROJECT_SOURCE_DIR}/lib/)
+find_library(IGRAPH_LIB libigraph.a ${PROJECT_SOURCE_DIR}/lib/)
+
+set(sym_exec_link_libs
+  ${NAUTY_LIB}
+  ${IGRAPH_LIB}
+)
+
+
 target_compile_definitions(gpmc 
   PRIVATE $<$<CONFIG:Debug>:DEBUG>
            __STDC_FORMAT_MACROS __STDC_LIMIT_MACROS
@@ -28,4 +40,4 @@ target_compile_definitions(gpmc
 
 add_executable(gpmc-bin core/Main.cc)
 set_target_properties(gpmc-bin PROPERTIES OUTPUT_NAME gpmc)
-target_link_libraries(gpmc-bin gpmc flowcutter z mpfr gmp gmpxx $<$<BOOL:${GPMC_STATIC_BUILD}>:-static>)
+target_link_libraries(gpmc-bin gpmc ${sym_exec_link_libs} flowcutter z mpfr gmp gmpxx $<$<BOOL:${GPMC_STATIC_BUILD}>:-static>)

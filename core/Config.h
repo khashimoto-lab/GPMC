@@ -30,6 +30,13 @@ struct ConfigCounter {
 	bool watchCand;
 	std::string vs_infile;
 	bool keepVarMap;
+  // * for IsoCC
+  bool use_isocc;
+  bool isocc_ub_set;
+  unsigned int isocc_lb;
+  int isocc_ub;
+  int isocc_pvar;
+  bool isocc_stats; // * for statistics
 };
 
 struct ConfigComponentManager {
@@ -37,6 +44,13 @@ struct ConfigComponentManager {
 	bool ddnnf;
 	int varSelectionHueristics;
 	int cachesize;
+  // * for IsoCC
+  bool use_isocc;
+  bool isocc_ub_set;
+  unsigned int isocc_lb;
+  int isocc_ub;
+  int isocc_pvar;
+  bool isocc_stats; // * for statistics
 };
 
 struct ConfigPreprocessor {
