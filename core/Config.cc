@@ -23,7 +23,7 @@ static StringOption	opt_varscore	(omain, "varscore", "Input file for giving scor
 static BoolOption		opt_isocc   (omain, "useIsoCC", "enable isomorphic component caching.", false);
 static Int64Option  opt_isocc_lb  (omain, "isoLB", "use isomorphic component caching only for components of size at least n (must be used with -useIsoCC).", 10, Int64Range(0, UINT32_MAX));
 static Int64Option  opt_isocc_ub  (omain, "isoUB", "use isomorphic component caching only for components of size at most n (must be used with -useIsoCC). If n = -1 then not using upper bound.", 250, Int64Range(-1, INT32_MAX));
-static Int64Option  opt_isocc_pvar  (omain, "isoPvar", "use isomorphic component caching only for components of pvars at least n (must be used with -useIsoCC).", 5, Int64Range(1, INT32_MAX));
+static Int64Option  opt_isocc_pvar  (omain, "isoPvar", "use isomorphic component caching only for components of pvars at least n (must be used with -useIsoCC).", 3, Int64Range(1, INT32_MAX));
 static BoolOption		opt_isocc_st  (omain, "isoStats", "Statistics for isomorphic component caching.", false);
 
 static const char* opp = "GPMC -- Preprocessor";
