@@ -343,6 +343,13 @@ int main(int argc, char** argv)
 			  case PMC:	printf("c o Mode: Projected Model Counting\n"); break;
 			  case PWMC:	printf("c o Mode: Projected Weighted Model Counting\n"); break;
 			}
+      if(config.cntr.use_isocc) {
+        printf("c o use isomorphic component caching\n");
+        printf("c o lower bound is %d\n", config.cntr.isocc_lb);
+        if(config.cntr.isocc_ub_set)
+          printf("c o upper bound is %d\n", config.cntr.isocc_ub);
+        else printf("c o upper bound is not set\n");
+			}
 			fflush(stdout);
 		}
 
@@ -370,6 +377,11 @@ int main(int argc, char** argv)
 				if (setrlimit(RLIMIT_AS, &rl) == -1)
 					printf("c o WARNING! Could not set resource limit: Virtual memory.\n");
 			} }
+    
+    if (config.cntr.mode != MC && config.cntr.mode != PMC) {
+      printf("c o ERROR! WMC WPMC are not supported.\n");
+      exit(1);
+    }
 
 		if(config.cntr.mode == MC || config.cntr.mode == PMC || config.cntr.natw) {
 			if (config.cntr.ddnnf) {

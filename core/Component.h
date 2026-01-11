@@ -10,6 +10,13 @@
 #include <vector>
 #include <math.h>
 
+#include <boost/container/flat_set.hpp>
+
+#include "../nauty/nauty.h"
+#include "../nauty/naugroup.h"
+#include "../nauty/nautinv.h"
+#include "../nauty/naututil.h"
+
 using namespace Glucose;
 using namespace std;
 
@@ -232,6 +239,10 @@ private:
 	static unsigned _clause_mask;
 	static const unsigned _bitsPerBlock = (sizeof(unsigned) << 3);
 
+  // * for IsoCC
+  inline void TraditionalPackedComponent(Component& rComp);
+  inline void SymmetricPackedComponent(Component& rComp, const vec<uint32_t>& occlists_lit, const vec<int>& occ_pool_lit, const ClauseAllocator &ca, const vec<CRef> &clauses, int npvars);
+
 public:
 	static unsigned bits_per_variable() {
 		return _bits_per_variable;
@@ -254,14 +265,54 @@ protected:
 
 	NodeIndex node_;
 
+  // * for IsoCC
+  sparsegraph* canonical_graph_ = nullptr;
+  unsigned* idMap_ = nullptr; //Used in Canonical Graph creation, mapping literalIDs to graph index
+  bool isocc_ = false;
+  unsigned nvars_ = 0;
+  bool iso_stats_ = false;
+  unsigned iso_data_size = 0;
+
 public:
 	PackedComponent() : node_(UNDEF_NODE){
 	}
 
-	inline PackedComponent(Component& rComp);
+  PackedComponent(Component& rComp, const vec<uint32_t>& occlists_lit, const vec<int>& occ_pool_lit,
+      const ClauseAllocator &ca, const vec<CRef> &clauses, int npvars, const ConfigComponentManager& config) {
+    // * for IsoCC
+    if (config.use_isocc)
+    {
+      if (rComp.nVars() >= config.isocc_lb &&
+         (!config.isocc_ub_set || rComp.nVars() <= config.isocc_ub) &&
+          rComp.nPVars(npvars) >= config.isocc_pvar)
+      {
+        // * use symmetric component caching
+        isocc_ = true;
+        idMap_ = new unsigned[(occlists_lit.size() + 1) << 1];
+        if (config.isocc_stats) {
+          iso_stats_ = true;
+          TraditionalPackedComponent(rComp);
+        }
+        SymmetricPackedComponent(rComp, occlists_lit, occ_pool_lit, ca, clauses, npvars);
+        // TODO Verify
+        iso_data_size = (sizeof(int) * (canonical_graph_->dlen + canonical_graph_->elen + 1) +
+                         sizeof(size_t) * (canonical_graph_->vlen + 5) +
+                         sizeof(size_t *) + 2 * sizeof(int *) + sizeof(sg_weight *)) / 4;
+      }
+      else
+      {
+        TraditionalPackedComponent(rComp);
+      }
+    }
+    else
+    {
+      TraditionalPackedComponent(rComp);
+    }
+  }
 
-	PackedComponent(Component & rComp, const T_data &model_count, unsigned long time, NodeIndex node) :
-		PackedComponent(rComp) {
+	PackedComponent(Component & rComp, const T_data &model_count, unsigned long time, NodeIndex node, const vec<uint32_t> &occlists_lit,
+      const vec<int> &occ_pool_lit, const ClauseAllocator &ca, const vec<CRef> &clauses, int npvars, const ConfigComponentManager &config) :
+		PackedComponent(rComp, occlists_lit, occ_pool_lit, ca, clauses, npvars, config) {
 		model_count_ = model_count;
 		creation_time_ = time;
 		node_ = node;
@@ -270,9 +321,16 @@ public:
 	~PackedComponent() {
 		if (data_)
 			free(data_);
+    if (isocc_) {
+      SG_FREE(*canonical_graph_);
+      free(canonical_graph_);
+    }
 	}
 
 	unsigned data_size() const {
+    if (isocc_)
+      return iso_data_size;
+
 		if (!data_)
 			return 0;
 
@@ -307,22 +365,34 @@ public:
 		return hashkey_;
 	}
 
+  // * for IsoCC
+  bool isocc() {
+    return isocc_;
+	}
+
 	// NOTE that the following is only an upper bound on
 	// the number of variables
 	// it might overcount by a few variables
 	// this is due to the way things are packed
 	// and to reduce time needed to compute this value
 	unsigned num_variables() {
+    if (isocc_)
+    {
+      return nvars_;
+    }
+    else
+    {
 		unsigned bits_per_var_diff = (*data_) & 31;
 		return 1
 				+ (clauses_ofs_ * sizeof(unsigned) * 8 - bits_per_variable() - 5)
 				/ bits_per_var_diff;
+		}
 	}
 	//  unsigned num_variables() {
 	//      return (clauses_ofs_ * sizeof(unsigned) * 8) /_bits_per_variable;
 	//  }
 
-	inline bool equals(const PackedComponent &comp) const;
+	inline bool equals(const PackedComponent &comp, bool &trad_hit) const;
 
 };
 
@@ -346,12 +416,14 @@ public:
 	CachedComponent() {
 	}
 
-	CachedComponent(Component &comp, const T_data &model_count, unsigned long time, NodeIndex node) :
-		PackedComponent<T_data>(comp, model_count, time, node) {
-	}
+  CachedComponent(Component &comp, const T_data &model_count, unsigned long time, NodeIndex node, 
+      const vec<uint32_t> &occlists_lit, const vec<int> &occ_pool_lit, const ClauseAllocator &ca, const vec<CRef> &clauses, int npvars, const ConfigComponentManager &config) :
+    PackedComponent<T_data>(comp, model_count, time, node, occlists_lit, occ_pool_lit, ca, clauses, npvars, config) {
+  }
 
-	CachedComponent(Component &comp) :
-		PackedComponent<T_data>(comp) {
+	CachedComponent(Component &comp, const vec<uint32_t> &occlists_lit, const vec<int> &occ_pool_lit,
+      const ClauseAllocator &ca, const vec<CRef> &clauses, int npvars, const ConfigComponentManager &config) :
+		PackedComponent<T_data>(comp, occlists_lit, occ_pool_lit, ca, clauses, npvars, config) {
 	}
 
 	// a cache entry is deletable
@@ -377,6 +449,8 @@ public:
 		if (this->data_)
 			delete this->data_;
 		this->data_ = nullptr;
+    SG_FREE(*(this->canonical_graph_));
+    free(this->canonical_graph_);
 	}
 	unsigned long SizeInBytes() const {
 		return sizeof(CachedComponent)
@@ -482,7 +556,8 @@ public:
 	// returns the id of the entry created
 	// stores in the entry the position of
 	// comp which is a part of the component stack
-	CacheEntryID createEntryFor(Component &comp, unsigned stack_id);
+	CacheEntryID createEntryFor(Component &comp, unsigned stack_id, const vec<uint32_t> &occlists_lit, const vec<int> &occ_pool_lit,
+      const ClauseAllocator &ca, const vec<CRef> &clauses, int npvars, const ConfigComponentManager &config);
 
 	// unchecked erase of an entry from entry_base_
 	void eraseEntry(CacheEntryID id) {
@@ -513,6 +588,8 @@ public:
 	void printStats() const {
 		printf("c o Cache lookup          = %"PRIu64"\n", num_cache_look_ups_);
 		printf("c o Cache hit             = %"PRIu64"\n", num_cache_hits_);
+		printf("c o Sym cache hit         = %"PRIu64"\n", num_sym_cache_hits_);
+		printf("c o Sym hit but trad not  = %"PRIu64"\n", num_sym_onlyhits_);
 		printf("c o Cache reduce          = %"PRIu64"\n", num_cache_reduce_);
 	}
 	// --- Added by k-hasimt --- END
@@ -527,6 +604,8 @@ private:
 	// uint64_t sum_memory_size_cached_components_ = 0;
 	uint64_t cache_bytes_memory_usage_ = 0;
 	uint64_t maximum_cache_size_bytes;
+	uint64_t num_sym_cache_hits_ = 0;
+  uint64_t num_sym_onlyhits_ = 0;
 
 	// compute the size in bytes of the component cache from scratch
 	// the value is stored in bytes_memory_usage_
@@ -572,6 +651,10 @@ class ComponentManager {
 	vec<uint32_t> occlists_;
 	vec<int> occ_pool_;
 
+  // * for IsoCC
+	vec<uint32_t> occlists_lit_;  // * occlists_lit_[toInt(lit)]
+	vec<int> occ_pool_lit_; // * toInt(lit), toLit(occ_pool_lit_[i]), lit = toLit(occ_pool_lit_[toInt(lit)])
+
 	vec<scStateT> varseen_;
 	vec<scStateT> clseen_;
 
@@ -581,6 +664,7 @@ class ComponentManager {
 
 	int npvars_;
 	uint64_t components;
+	uint64_t sym_components;
 	uint64_t num_try_split;
 
   uint64_t num_cancel_max_dec;
@@ -598,7 +682,7 @@ class ComponentManager {
 
 public:
 	ComponentManager() :
-		npvars_(0), components(0), num_try_split(0), 
+		npvars_(0), components(0), sym_components(0), num_try_split(0), 
 		num_cancel_max_dec(0), cancel_max_dec_p(0.0), fixed_level_(0) {
 	}
 
@@ -704,6 +788,7 @@ public:
 
 	void printStats() const {
 		printf("c o Components            = %"PRIu64"\n", components);
+		printf("c o Sym components        = %"PRIu64"\n", sym_components);
 		printf("c o Split                 = %"PRIu64"\n", num_try_split);
     printf("c o max cancel decisions  = %-11"PRIu64" ( %.4f %%)\n", num_cancel_max_dec, cancel_max_dec_p);
 		cache_.printStats();
@@ -766,21 +851,43 @@ protected:
 };
 
 template <class T_data>
-bool PackedComponent<T_data>::equals(const PackedComponent<T_data> &comp) const {
-	if (clauses_ofs_ != comp.clauses_ofs_)
-		return false;
+bool PackedComponent<T_data>::equals(const PackedComponent<T_data> &comp, bool &trad_hit) const {
+  if (isocc_ != comp.isocc_) return false;
 
-	unsigned* p = data_;
-	unsigned* r = comp.data_;
-	while ((*p || *(p + 1)) && *p == *r) {		// modified by k-hasimt. One more 0 is added in the end of a packed component.
-		p++;
-		r++;
-	}
-	return *p == *r && *(p + 1) == *(r + 1);
+  if (isocc_)
+  {
+    if (iso_stats_) {
+      if (clauses_ofs_ != comp.clauses_ofs_) {
+        trad_hit = false;
+      } else {
+        unsigned* p = data_;
+        unsigned* r = comp.data_;
+        while ((*p || *(p + 1)) && *p == *r) {		// modified by k-hasimt. One more 0 is added in the end of a packed component.
+          p++;
+          r++;
+        }
+        trad_hit = (*p == *r && *(p + 1) == *(r + 1));
+      }
+    }
+    return aresame_sg(canonical_graph_, comp.canonical_graph_);
+  }
+  else
+  {
+    if (clauses_ofs_ != comp.clauses_ofs_)
+      return false;
+
+    unsigned* p = data_;
+    unsigned* r = comp.data_;
+    while ((*p || *(p + 1)) && *p == *r) {		// modified by k-hasimt. One more 0 is added in the end of a packed component.
+      p++;
+      r++;
+    }
+    return *p == *r && *(p + 1) == *(r + 1);
+  }
 }
 
 template <class T_data>
-PackedComponent<T_data>::PackedComponent(Component &rComp) {
+void PackedComponent<T_data>::TraditionalPackedComponent(Component &rComp) {
 	int max_diff = 0;
 	Var v1, v2;
 	ClID c1, c2;
@@ -881,6 +988,167 @@ PackedComponent<T_data>::PackedComponent(Component &rComp) {
 	hashkey_ = hashkey_vars + (((unsigned long) hashkey_clauses) << 16);
 
 	node_ = UNDEF_NODE;
+}
+
+template <class T_data>
+void PackedComponent<T_data>::SymmetricPackedComponent(Component &rComp, const vec<uint32_t> &occlists_lit,
+    const vec<int> &occ_pool_lit, const ClauseAllocator &ca, const vec<CRef> &clauses, int npvars) {
+	Var v; ClID c;
+	int i, b, l;
+
+  nvars_ = rComp.nVars();
+  unsigned num_variables = nvars_;
+  unsigned num_clauses = rComp.nlongCls();
+  int num_pvars_in_cmp = 0;
+
+  int n = num_variables * 2 + num_clauses;
+  auto *edges = new std::vector<unsigned>[n]; // For each vertex, all its connections.
+  int num_edges = 0;
+
+  vec<bool> seen;
+  seen.growTo(occlists_lit.size() - 1, false);
+
+  unsigned nodeIndex = 0;
+  /* Create lit - lit edges */
+	for (i = 0; (v = rComp[i]) != var_Undef; i++) {
+    seen[v] = true;
+    if (v < npvars) num_pvars_in_cmp++;
+
+    Lit lit_f = mkLit(v, false);
+    edges[nodeIndex] = std::vector<unsigned>();
+    edges[nodeIndex].reserve(num_clauses + 1 + (occlists_lit[toInt(lit_f)+1] - occlists_lit[toInt(lit_f)]));
+    Lit lit_t = mkLit(v, true);
+    edges[nodeIndex + 1] = std::vector<unsigned>();
+    edges[nodeIndex + 1].reserve(num_clauses + (occlists_lit[toInt(lit_t)+1] - occlists_lit[toInt(lit_t)]));
+    assert (toInt(lit_f) + 1 == toInt(lit_t));
+
+    edges[nodeIndex].push_back(nodeIndex + 1); //connected to negation
+    edges[nodeIndex + 1].push_back(nodeIndex); //connected to negation
+    num_edges++;
+    //std::cout << "connecting " << nodeIndex << "(-" << var(lit_f) << ") and " << (nodeIndex + 1) << "\n";
+    idMap_[(unsigned)toInt(lit_f)] = nodeIndex++;
+    idMap_[(unsigned)toInt(lit_t)] = nodeIndex++;
+  }
+
+  /* Create cl-lit edges */
+  for (i++; (c = rComp[i]) != clid_Undef; i++) {
+    edges[nodeIndex] = std::vector<unsigned>();
+    edges[nodeIndex].reserve(num_variables);
+    const Clause& cl = ca[clauses[c]];
+    for (int i = 0; i < cl.size(); i++) {
+      if (seen[var(cl[i])]) {
+        unsigned litIndex = idMap_[(unsigned) toInt(cl[i])];
+        edges[nodeIndex].push_back(litIndex);
+        edges[litIndex].push_back(nodeIndex);
+        num_edges++;
+        //std::cout << "connecting clause " << nodeIndex << " and " << litIndex << "\n";
+      }
+    }
+    nodeIndex++;
+  }
+
+  /* Create cl-lit binary edges */
+	for (i = 0; (v = rComp[i]) != var_Undef; i++) {
+    Lit lit = mkLit(v, false);
+    unsigned currVarNodeIndex = idMap_[(unsigned) toInt(lit)];
+    for (b = occlists_lit[toInt(lit)]; (l = occ_pool_lit[b]) != var_Undef; b++) {
+      if (toInt(lit) > l) {
+        if (seen[var(toLit(l))]) {
+          unsigned otherVarNodeIndex = idMap_[(unsigned) l];
+          edges[currVarNodeIndex].push_back(otherVarNodeIndex);
+          edges[otherVarNodeIndex].push_back(currVarNodeIndex);
+          //std::cout << "connecting binary " << currVarNodeIndex << " and " << otherVarNodeIndex << "\n";
+          num_edges++;
+        }
+      }
+    }
+
+    lit = mkLit(v, true);
+    currVarNodeIndex = idMap_[(unsigned)toInt(lit)];
+    for (b = occlists_lit[toInt(lit)]; (l = occ_pool_lit[b]) != var_Undef; b++) {
+      if (toInt(lit) > l) {
+        if (seen[var(toLit(l))]) {
+          unsigned otherVarNodeIndex = idMap_[(unsigned) l];
+          edges[currVarNodeIndex].push_back(otherVarNodeIndex);
+          edges[otherVarNodeIndex].push_back(currVarNodeIndex);
+          //std::cout << "connecting binary " << currVarNodeIndex << " and " << otherVarNodeIndex << "\n";
+          num_edges++;
+        }
+      }
+    }
+  }
+  num_edges *= 2;
+  unsigned num_nodes = nodeIndex;
+
+  //nv = #vertices = num_clauses + num_variables * 2;
+  //d = array, for each vertex the degree of edges.
+  //v = array, for each vertex the start index in e
+  //e = array of endpoint of edges such that e[v[i]], e[v[i]+1], ..., e[v[i]+d-1] are connected to vertex i
+  DYNALLSTAT(int, lab, lab_sz);
+  DYNALLSTAT(int, ptn, ptn_sz);
+  DYNALLSTAT(int, orbits, orbits_sz);
+  static DEFAULTOPTIONS_SPARSEGRAPH(options);
+  options.getcanon = TRUE;
+  options.defaultptn = FALSE;
+  statsblk stats;
+  SG_DECL(sg);
+
+  int m = SETWORDSNEEDED(num_nodes);
+  nauty_check(WORDSIZE, m, num_nodes, NAUTYVERSIONID);
+  DYNALLOC1(int, lab, lab_sz, num_nodes, "malloc");
+  DYNALLOC1(int, ptn, ptn_sz, num_nodes, "malloc");
+  DYNALLOC1(int, orbits, orbits_sz, num_nodes, "malloc");
+  SG_ALLOC(sg, num_nodes, num_edges, "malloc");
+  
+  /* Create colour partitions */
+  int labIndex = 0;
+  for (; labIndex < num_pvars_in_cmp*2; labIndex++) {
+    lab[labIndex] = labIndex;
+    ptn[labIndex] = 1;
+  }
+  ptn[labIndex - 1] = 0; // partition pvar - clause
+
+  for (int cl_node = num_variables*2; cl_node < num_nodes; cl_node++, labIndex++) {
+    lab[labIndex] = cl_node;
+    ptn[labIndex] = 1;
+  }
+  ptn[labIndex - 1] = 0; // partition clause - npvar
+
+  for (int npvar_node = num_pvars_in_cmp*2; npvar_node < num_variables*2; npvar_node++, labIndex++) {
+      lab[labIndex] = npvar_node;
+      ptn[labIndex] = 1;
+  }
+
+  /* Create graph */
+  //sg.d[i] = degree of node i
+  //sg.v[i] = index in sg.e from which all neighbors of i are listed (sg.d[i] neighbors).
+  //sg.e = concatenation of all neighbors of node 0, node 1, node 2, ...
+  sg.nv = num_nodes;
+  sg.nde = num_edges;
+
+  //Fill in sg.d, sg.v and sg.e.
+  // for index 0 (separate because sg.v[-1] does not exist)
+  sg.d[0] = edges[0].size();
+  sg.v[0] = 0;
+  std::memcpy(sg.e, edges[0].data(), sizeof(unsigned) * edges[0].size());
+  // for index 1..n
+  for (int i = 1; i < num_nodes; i++)
+  {
+      sg.d[i] = edges[i].size();
+      sg.v[i] = sg.v[i - 1] + edges[i - 1].size();
+      std::memcpy(&(sg.e[sg.v[i]]), edges[i].data(), sizeof(unsigned) * edges[i].size());
+  }
+
+  //std::cout << "Start nauty with num_var: " << num_variables << ", num_clauses " << num_clauses << " and num_edges " << num_edges << "\n";
+  canonical_graph_ = (sparsegraph *)malloc(sizeof(sparsegraph));
+  SG_INIT(*canonical_graph_);
+  sparsenauty(&sg, lab, ptn, orbits, &options, &stats, canonical_graph_);
+  long cg_hashkey = hashgraph_sg(canonical_graph_, 0);
+  SG_FREE(sg);
+  delete[] edges;
+
+	hashkey_ = cg_hashkey;
+  free(idMap_);
 }
 
 template <class T_data>

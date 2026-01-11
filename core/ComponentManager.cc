@@ -14,6 +14,12 @@ void ComponentManager<T_data>::init(int nvars, int npvars, const vec<CRef>& scla
 	occlists_.growTo(nvars);
 	var_frequency_.growTo(nvars);
 
+  // * for IsoCC
+  // * binlinks_lit[ToInt(lit)], occ_lit[ToInt(lit)]
+	vec< vec<Lit> > binlinks_lit(nvars*2);
+	vec< vec<ClID> > occ_lit(nvars*2);
+	occlists_lit_.growTo(nvars*2+1);
+
 	for(int i = 0; i < sclauses.size(); i++) {
 		Clause& sc = (Clause &)sca[sclauses[i]];
 		if(sc.size() == 2) {
@@ -21,12 +27,17 @@ void ComponentManager<T_data>::init(int nvars, int npvars, const vec<CRef>& scla
 			binlinks[var(sc[1])].push(var(sc[0]));
 			var_frequency_[var(sc[0])]++;
 			var_frequency_[var(sc[1])]++;
+      // * for IsoCC
+			binlinks_lit[toInt(sc[0])].push(sc[1]);
+			binlinks_lit[toInt(sc[1])].push(sc[0]);
 		}
 		else {	// sc.size() > 2 (because bcp was already done and satisfied clauses were removed)
 			clauses_.push(ca_.alloc(sc));
 			for(int j = 0; j < sc.size(); j++){
 				occ[var(sc[j])].push(clauses_.size()-1);
 				var_frequency_[var(sc[j])]++;
+        // * for IsoCC
+        occ_lit[toInt(sc[j])].push(clauses_.size()-1);
 			}
 		}
 	}
@@ -50,6 +61,28 @@ void ComponentManager<T_data>::init(int nvars, int npvars, const vec<CRef>& scla
 			occ_pool_.push(ocl[i]);
 		occ_pool_.push(clid_Undef);
 	}
+
+  // * for IsoCC
+  occ_pool_lit_.clear();
+  for (int l = 0; l < nvars*2; l++) {  // * forall lit
+		occlists_lit_[l] = occ_pool_lit_.size();
+
+		vec<Lit>& bll = binlinks_lit[l];
+		sort(bll);
+		Var prev = var_Undef;
+		for(int i = 0; i < bll.size(); i++)
+			if(toInt(bll[i]) != prev) {
+				occ_pool_lit_.push(toInt(bll[i]));
+				prev = toInt(bll[i]);
+			}
+		occ_pool_lit_.push(var_Undef);
+
+		vec<ClID>& ocll = occ_lit[l];
+		for(int i = 0; i < ocll.size(); i++)
+			occ_pool_lit_.push(ocll[i]);
+		occ_pool_lit_.push(clid_Undef);
+  }
+  occlists_lit_[nvars*2] = occ_pool_lit_.size();
 
 	varseen_.growTo(nvars, SC_CANDIDATE);
 	clseen_.growTo(clauses_.size(), SC_CANDIDATE);
@@ -82,7 +115,7 @@ void ComponentManager<T_data>::initComponentStack(int nvars, int nlongcls) {
 	orig.closeClID();
 
 #ifdef CACHE
-	CacheEntryID id = cache_.createEntryFor(*comp_stack_.back(), comp_stack_.size() - 1);
+	CacheEntryID id = cache_.createEntryFor(*comp_stack_.back(), comp_stack_.size() - 1, occlists_lit_, occ_pool_lit_, ca_, clauses_, npvars_, config);
 	comp_stack_.back()->set_id(id);
 #endif
 }
@@ -157,7 +190,7 @@ int ComponentManager<T_data>::splitComponent(const vec<lbool>& assigns, const ve
 #endif
 #ifdef CACHE
 				// caching
-				CacheEntryID id = cache_.createEntryFor(*comp_stack_.back(), comp_stack_.size() - 1);
+				CacheEntryID id = cache_.createEntryFor(*comp_stack_.back(), comp_stack_.size() - 1, occlists_lit_, occ_pool_lit_, ca_, clauses_, npvars_, config);
 				if (id != 0) {
 					comp_stack_.back()->set_id(id);
 					assert(cache_.hasEntry(id));
@@ -171,6 +204,7 @@ int ComponentManager<T_data>::splitComponent(const vec<lbool>& assigns, const ve
 						delete comp_stack_.back();
 						comp_stack_.pop_back();
 					} else {
+            if (cache_.entry(id).isocc()) sym_components++;
 						cache_.entry(id).set_father(targetcomp.id());
 						cache_.add_descendant(targetcomp.id(), id);
 						if(isPVar(v)) boundary++;
