@@ -206,9 +206,13 @@ void Counter<T_data>::count_main()
 		CRef confl = propagate();
 		if(config.watchCand) {
 			for(int i = bpos; i < trail.size(); i++){
-				if(var(trail[i]) < npvars && cmpmgr.isDecCand(var(trail[i]))) {
-					if(wc) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(trail[i])]);
-					if(config.ddnnf) cmpmgr.addLitNode(trail[i]);
+				if(var(trail[i]) < npvars) {
+					if(cmpmgr.isDecCand(var(trail[i]))) {
+						if(wc) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(trail[i])]);
+						if(config.ddnnf) cmpmgr.addLitNode(trail[i]);
+					} else if(wc && decisionLevel() == 0) {
+						gweight *= lit_weight[toInt(trail[i])];
+					}
 				}
 			}
 		}
@@ -226,7 +230,7 @@ void Counter<T_data>::count_main()
 			learnt_clause.clear();
 			selectors.clear();
 			bool suc = analyzeMC(confl, learnt_clause, selectors, backtrack_level, nblevels, szWoutSelectors);
-			if(!suc) {
+			if(on_bj && !suc) {
 				nbackjumps_sp++;
 				bjResolve(backtrack_level);
 				bstate = RESOLVED;
@@ -291,7 +295,7 @@ void Counter<T_data>::count_main()
 						cmpmgr.popComponent();
 					cmpmgr.removeCachePollutions();
 
-					if(!last_suc) {
+					if(on_bj && !last_suc) {
 						nbackjumps_sp++;
 						bjResolve(last_bklevel);
 						bstate = RESOLVED;
@@ -582,9 +586,13 @@ inline btStateT Counter<T_data>::Resolve(int bk_level, CRef cr, Lit lit) {
 		if(cr != CRef_Undef) {
 			uncheckedEnqueue(lit, cr);
 			if(config.watchCand) {
-				if(var(lit) < npvars && cmpmgr.isDecCand(var(lit))) {
-					if(wc) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(lit)]);
-					if(config.ddnnf) cmpmgr.addLitNode(lit);
+				if(var(lit) < npvars) {
+					if(cmpmgr.isDecCand(var(lit))) {
+						if(wc) cmpmgr.topDecision().mulBranchWeight(lit_weight[toInt(lit)]);
+						if(config.ddnnf) cmpmgr.addLitNode(lit);
+					} else if(wc && level == 0) {
+						gweight *= lit_weight[toInt(lit)];
+					}
 				}
 			}
 		}

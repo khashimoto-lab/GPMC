@@ -616,6 +616,11 @@ public:
 		dl_.pop_back();
 	}
 
+	void initDecCand() {
+		vector<unsigned>& dc = dl_.back().dec_cands;
+		dc.assign(npvars_+1, 0);
+		dc[npvars_] = 1;
+	}
 	void setDecCand() {
 		vector<unsigned>& dec_cands = dl_.back().dec_cands;
 		dec_cands.resize(npvars_+1);

@@ -64,6 +64,7 @@ void ComponentManager<T_data>::init(int nvars, int npvars, const vec<CRef>& scla
 
 	initComponentStack(nvars, clauses_.size());
 	initDecisionStack();
+	initDecCand();
 
 	components = 1;
 	num_try_split = 0;
