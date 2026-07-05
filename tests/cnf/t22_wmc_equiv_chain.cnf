@@ -1,0 +1,16 @@
+c WMC: chain x1 <-> x2 <-> x3, plus (x1 v x4)
+c t wmc
+p cnf 4 5
+c p weight 1 0.25 0
+c p weight -1 0.75 0
+c p weight 2 0.5 0
+c p weight -2 0.5 0
+c p weight 3 0.2 0
+c p weight -3 0.8 0
+c p weight 4 0.4 0
+c p weight -4 0.6 0
+1 -2 0
+-1 2 0
+2 -3 0
+-2 3 0
+1 4 0

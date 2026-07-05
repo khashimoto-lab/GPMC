@@ -1,0 +1,7 @@
+c PMC: 4 vars, project onto vars 1,2
+c t pmc
+p cnf 4 3
+c p show 1 2 0
+1 3 0
+2 4 0
+-3 -4 0

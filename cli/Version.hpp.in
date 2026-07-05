@@ -1,0 +1,8 @@
+#pragma once
+
+namespace gpmc {
+
+static constexpr const char* VERSION     = "@GPMC_VERSION@";
+static constexpr const char* GIT_COMMIT  = "@GIT_COMMIT@";
+
+} // namespace gpmc

@@ -1,0 +1,5 @@
+c MC: x1 <-> x2 isolated class, (x3 v x4) independent; answer 6
+p cnf 4 3
+1 -2 0
+-1 2 0
+3 4 0

@@ -1,0 +1,9 @@
+c WPMC: proj x2 equivalent to nonproj x1 (survivor); weights sum != 1 on purpose
+c t pwmc
+p cnf 3 3
+c p show 2 0
+c p weight 2 0.3 0
+c p weight -2 0.5 0
+1 -2 0
+-1 2 0
+1 3 0

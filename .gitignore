@@ -1,0 +1,9 @@
+build/
+build_dbg/
+build_*/
+build-debug/
+bin/
+*.o
+*.a
+.vscode/
+bench-*/

@@ -1,0 +1,6 @@
+c t wmc
+p cnf 1 2
+c p weight 1 0.3 0
+c p weight -1 0.7 0
+1 0
+-1 0

@@ -1,0 +1,8 @@
+c t pwmc
+p cnf 2 1
+c p show 1 2 0
+c p weight 1 0.3 0
+c p weight -1 0.7 0
+c p weight 2 0.4 0
+c p weight -2 0.6 0
+1 2 0

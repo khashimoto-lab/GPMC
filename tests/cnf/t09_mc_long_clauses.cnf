@@ -1,0 +1,6 @@
+c MC with two 3-literal clauses: (1 v 2 v 3) and (-1 v -2 v -3)
+c Constraint: at least one true AND at least one false
+c Expected: 6  (all 8 minus all-false {0,0,0} and all-true {1,1,1})
+p cnf 3 2
+1 2 3 0
+-1 -2 -3 0

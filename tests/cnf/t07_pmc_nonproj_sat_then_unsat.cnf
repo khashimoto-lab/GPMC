@@ -1,0 +1,21 @@
+c t pmc
+c Projected variables: {1}
+c Non-projection Comp A: {2,3} — always SAT (clause 2v3), disconnected from var 1
+c Non-projection Comp C1: {4,5,6} — UNSAT when 1=T
+c   (4v5),(4v-5) => 4=T; (-4v6),(-4v-6) => 6=T and 6=F => contradiction
+c Non-projection Comp C2: {7,8} — SAT when 1=T (clause 7v8)
+c
+c When 1=T: internalSAT(C2={7,8})=SAT contributes 1, then internalSAT(C1={4,5,6})=UNSAT
+c   Bug: without markBranchUnsat(), accumulated 1 from C2 wrongly propagates -> answer 2
+c   Fix: markBranchUnsat() discards C2's contribution -> answer 1
+c When 1=F: all -1 clauses satisfied, no constraint on 4-8 -> 1 projected model
+c
+c Expected PMC answer: 1
+p cnf 8 6
+c p show 1 0
+2 3 0
+-1 4 5 0
+-1 4 -5 0
+-1 -4 6 0
+-1 -4 -6 0
+-1 7 8 0

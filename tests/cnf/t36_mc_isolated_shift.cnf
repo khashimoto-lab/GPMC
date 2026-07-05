@@ -1,0 +1,5 @@
+c MC: x1 fixed by a unit clause, x2 & x3 isolated (free). Truth = 2^2 = 4.
+c Preprocessing folds this to an empty CNF carrying "c MUST SHIFT BY 2";
+c regression that the unweighted free-var count round-trips through gpmc-pp.
+p cnf 3 1
+1 0

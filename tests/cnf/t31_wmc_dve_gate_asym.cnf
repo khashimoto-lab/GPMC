@@ -1,0 +1,27 @@
+c WMC regression for DVE weight folding via a GATE definition (not plain equiv).
+c x2 is definable by x1 through clauses -1 2 / 1 -2, while x1 itself is pinned
+c by a gate (3 4 / -3 -5 / 2 5), so the definability is exercised on a different
+c structural path than t30's bare equivalence. x2 again has an ASYMMETRIC weight
+c whose two sides collide at 15 significant figures but differ in exact value
+c (1/3 vs 100000000000000000003/300000000000000000000).
+c Guards the same two bugs as t30, but reached through a gate:
+c  - candidate selection must use exact equals(), not to_string();
+c  - an eliminated definable var's weight must be folded into weight_factor.
+c Sci answer (all vars projected): 1.04166666666667e-01.
+c t wmc
+c p weight 1 1/2 0
+c p weight -1 1/2 0
+c p weight 2 1/3 0
+c p weight -2 100000000000000000003/300000000000000000000 0
+c p weight 3 1/2 0
+c p weight -3 1/2 0
+c p weight 4 1/2 0
+c p weight -4 1/2 0
+c p weight 5 1/2 0
+c p weight -5 1/2 0
+p cnf 5 5
+3 4 0
+-1 2 0
+1 -2 0
+2 5 0
+-3 -5 0

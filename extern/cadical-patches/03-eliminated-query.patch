@@ -1,0 +1,73 @@
+--- a/src/cadical.hpp
++++ b/src/cadical.hpp
+@@ -842,6 +842,15 @@
+   int fixed (int lit) const;
+ 
+   //------------------------------------------------------------------------
++  // Query whether a variable has been removed by bounded variable
++  // elimination (BVE).  Returns '1' if 'abs (lit)' is currently in the
++  // ELIMINATED state, '0' otherwise.  The sign of 'lit' is ignored: this
++  // asks about the variable, not a polarity.  Read-only: it inspects solver
++  // state and changes nothing, so it is logically inert.
++  //
++  int eliminated (int lit) const;
++
++  //------------------------------------------------------------------------
+   // Force the default decision phase of a variable to a certain value.
+   //
+   void phase (int lit);
+--- a/src/external.hpp
++++ b/src/external.hpp
+@@ -390,7 +390,8 @@
+   int lookahead ();
+   CaDiCaL::CubesWithStatus generate_cubes (int, int);
+ 
+   int fixed (int elit) const; // Implemented in 'internal.hpp'.
++  int eliminated (int elit) const; // Implemented in 'internal.hpp'.
+ 
+   /*----------------------------------------------------------------------*/
+ 
+--- a/src/internal.hpp
++++ b/src/internal.hpp
+@@ -1849,6 +1849,23 @@
+   return internal->fixed (ilit);
+ }
+ 
++// Implemented here for keeping it all inline (requires Internal::flags).
++// Mirrors 'External::fixed' but reports the ELIMINATED status of the
++// variable instead of an implied root-level assignment.  The sign of 'elit'
++// is irrelevant, so unlike 'fixed' we do not flip 'ilit'.
++
++inline int External::eliminated (int elit) const {
++  assert (elit);
++  assert (elit != INT_MIN);
++  int eidx = abs (elit);
++  if (eidx > max_var)
++    return 0;
++  int ilit = e2i[eidx];
++  if (!ilit)
++    return 0;
++  return internal->flags (ilit).eliminated ();
++}
++
+ /*------------------------------------------------------------------------*/
+ 
+ // We want to have termination checks inlined, particularly the first
+--- a/src/solver.cpp
++++ b/src/solver.cpp
+@@ -959,6 +959,15 @@
+   return res;
+ }
+ 
++int Solver::eliminated (int lit) const {
++  TRACE ("eliminated", lit);
++  REQUIRE_VALID_STATE ();
++  REQUIRE_VALID_LIT (lit);
++  int res = external->eliminated (lit);
++  LOG_API_CALL_RETURNS ("eliminated", lit, res);
++  return res;
++}
++
+ void Solver::phase (int lit) {
+   TRACE ("phase", lit);
+   REQUIRE_VALID_OR_SOLVING_STATE ();

@@ -1,0 +1,108 @@
+--- a/src/cadical.hpp
++++ b/src/cadical.hpp
+@@ -968,6 +968,16 @@
+   bool traverse_witnesses_backward (WitnessIterator &) const;
+   bool traverse_witnesses_forward (WitnessIterator &) const;
+ 
++  // Like 'traverse_clauses', but in addition to the irredundant clauses also
++  // traverses redundant (learnt) clauses whose glue is at most 'glue_limit'
++  // (the "elite" learnt clauses, glue <= 2 corresponding to CaDiCaL tier 1 by
++  // default). The iterator's 'clause (vec, redundant)' overload is invoked so
++  // the caller can distinguish original from learnt clauses (e.g. to re-add
++  // them as irredundant vs redundant in another solver). Units and the
++  // constraint are traversed as irredundant, exactly as in 'traverse_clauses'.
++  bool traverse_clauses_with_elite_learnts (ClauseIterator &,
++                                            int glue_limit = 2) const;
++
+   //------------------------------------------------------------------------
+   // Files with explicit path argument support compressed input and output
+   // if appropriate helper functions 'gzip' etc. are available.  They are
+@@ -1384,6 +1394,13 @@
+ public:
+   virtual ~ClauseIterator () {}
+   virtual bool clause (const std::vector<int> &) = 0;
++  // Overload used by 'traverse_clauses_with_elite_learnts' to tell the
++  // iterator whether the traversed clause is redundant (a learnt clause) or
++  // irredundant (original). The default forwards to the redundancy-agnostic
++  // 'clause' above, so existing iterators keep working unchanged.
++  virtual bool clause (const std::vector<int> &c, bool /*redundant*/) {
++    return clause (c);
++  }
+ };
+ 
+ /*------------------------------------------------------------------------*/
+--- a/src/internal.hpp
++++ b/src/internal.hpp
+@@ -1717,6 +1717,11 @@
+   //
+   bool traverse_clauses (ClauseIterator &);
+ 
++  // Like 'traverse_clauses', but also exports redundant (learnt) clauses with
++  // glue <= 'glue_limit', passing the redundancy flag to the iterator.
++  //
++  bool traverse_clauses_with_elite_learnts (ClauseIterator &, int glue_limit);
++
+   // Export and traverse all irredundant (non-unit) clauses.
+   //
+   bool traverse_constraint (ClauseIterator &);
+--- a/src/internal.cpp
++++ b/src/internal.cpp
+@@ -1262,4 +1262,37 @@
+   return true;
+ }
+ 
++// Same as 'traverse_clauses' above, but also exports redundant (learnt)
++// clauses whose glue is at most 'glue_limit'. The clause's 'redundant' flag is
++// passed to the iterator so the caller can tell originals from learnt clauses.
++//
++bool Internal::traverse_clauses_with_elite_learnts (ClauseIterator &it,
++                                                    int glue_limit) {
++  vector<int> eclause;
++  if (unsat)
++    return it.clause (eclause, false);
++  for (const auto &c : clauses) {
++    if (c->garbage)
++      continue;
++    if (c->redundant && c->glue > glue_limit)
++      continue;
++    bool satisfied = false;
++    for (const auto &ilit : *c) {
++      const int tmp = fixed (ilit);
++      if (tmp > 0) {
++        satisfied = true;
++        break;
++      }
++      if (tmp < 0)
++        continue;
++      const int elit = externalize (ilit);
++      eclause.push_back (elit);
++    }
++    if (!satisfied && !it.clause (eclause, c->redundant))
++      return false;
++    eclause.clear ();
++  }
++  return true;
++}
++
+ } // namespace CaDiCaL
+--- a/src/solver.cpp
++++ b/src/solver.cpp
+@@ -1592,6 +1592,18 @@
+   return res;
+ }
+ 
++bool Solver::traverse_clauses_with_elite_learnts (ClauseIterator &it,
++                                                  int glue_limit) const {
++  LOG_API_CALL_BEGIN ("traverse_clauses_with_elite_learnts");
++  REQUIRE_VALID_STATE ();
++  bool res =
++      external->traverse_all_frozen_units_as_clauses (it) &&
++      internal->traverse_clauses_with_elite_learnts (it, glue_limit) &&
++      internal->traverse_constraint (it);
++  LOG_API_CALL_RETURNS ("traverse_clauses_with_elite_learnts", res);
++  return res;
++}
++
+ bool Solver::traverse_witnesses_backward (WitnessIterator &it) const {
+   LOG_API_CALL_BEGIN ("traverse_witnesses_backward");
+   REQUIRE_VALID_STATE ();

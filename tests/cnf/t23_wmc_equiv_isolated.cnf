@@ -1,0 +1,14 @@
+c WMC: x1 <-> x2 class becomes isolated after substitution; (x3 v x4) independent
+c t wmc
+p cnf 4 3
+c p weight 1 0.25 0
+c p weight -1 0.75 0
+c p weight 2 0.5 0
+c p weight -2 0.5 0
+c p weight 3 0.4 0
+c p weight -3 0.6 0
+c p weight 4 0.3 0
+c p weight -4 0.7 0
+1 -2 0
+-1 2 0
+3 4 0

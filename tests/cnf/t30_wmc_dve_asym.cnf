@@ -1,0 +1,28 @@
+c WMC regression for DVE weight folding.
+c x1<->x2 (x2 definable by x1); x2 has an ASYMMETRIC weight whose two sides
+c collide at 15 significant figures but differ in exact value
+c (1/3 vs 100000000000000000003/300000000000000000000).
+c Two bugs this guards against:
+c  - candidate selection must use exact equals(), not to_string() (else x2 is
+c    wrongly taken as weight-symmetric and eliminated);
+c  - when DVE does eliminate a (symmetric) definable var, its weight must be
+c    folded into weight_factor (else the count is off by that weight).
+c Exact answer (all vars projected): w1*w2 + w1n*w2n with the weights below
+c   = 250000000000000000003/1200000000000000000000.
+c t wmc
+p cnf 5 5
+c p weight 1 1/2 0
+c p weight -1 1/2 0
+c p weight 2 1/3 0
+c p weight -2 100000000000000000003/300000000000000000000 0
+c p weight 3 1/2 0
+c p weight -3 1/2 0
+c p weight 4 1/2 0
+c p weight -4 1/2 0
+c p weight 5 1/2 0
+c p weight -5 1/2 0
+1 -2 0
+-1 2 0
+1 3 4 0
+2 4 5 0
+3 -5 0

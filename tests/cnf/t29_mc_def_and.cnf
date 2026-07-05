@@ -1,0 +1,5 @@
+c MC: x3 <-> (x1 AND x2), all projected; x3 definable by x1,x2; answer 4
+p cnf 3 3
+-3 1 0
+-3 2 0
+3 -1 -2 0
