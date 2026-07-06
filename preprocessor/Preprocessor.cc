@@ -287,7 +287,8 @@ void Preprocessor::rebuildCNF(CNF& cnf, PrepState& st) const {
 std::vector<int> Preprocessor::detectDefinable(const std::vector<std::vector<int>>& clauses,
                                                const std::vector<bool>& base,
                                                const std::vector<int>& candidates,
-                                               double time_limit_sec) const {
+                                               double time_limit_sec,
+                                               int conflict_limit) const {
     std::vector<int> result;
     if (candidates.empty()) return result;
 
@@ -357,6 +358,7 @@ std::vector<int> Preprocessor::detectDefinable(const std::vector<std::vector<int
             if (w == v || defined[w]) continue;
             solver.assume(cand_sel[w]);
         }
+        if (conflict_limit > 0) solver.limit("conflicts", conflict_limit);
         if (solver.solve() == 20) {
             defined[v] = true;
             result.push_back(v);
@@ -410,7 +412,8 @@ void Preprocessor::applyDVE(CNF& cnf, CaDiCaL::Solver& solver, PrepState& st,
     if (candidates.empty()) { log_phase3(); return; }
 
     std::vector<int> definable =
-        detectDefinable(clauses, base, candidates, config_.dve_time_limit);
+        detectDefinable(clauses, base, candidates, config_.dve_time_limit,
+                         config_.solve_conflict_limit);
     if (definable.empty()) { log_phase3(); return; }
 
     std::vector<bool> elim(nv, false);

@@ -56,7 +56,8 @@ private:
     std::vector<int> detectDefinable(const std::vector<std::vector<int>>& clauses,
                                      const std::vector<bool>& base,
                                      const std::vector<int>& candidates,
-                                     double time_limit_sec) const;
+                                     double time_limit_sec,
+                                     int conflict_limit) const;
 
     // Final pass after the round loop: consumes the last round's solver,
     // gathers the surviving clauses, folds the remaining weight
