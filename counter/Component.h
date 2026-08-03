@@ -61,6 +61,13 @@ protected:
     std::vector<uint32_t> data_;
     uint64_t hash_               = 0;
 
+    // Word index where the clause part of data_ begins (i.e. how many words
+    // the variable part occupies). Two components with a different variable
+    // count can otherwise pack to byte-identical data_ once the tail bits
+    // happen to line up across the word boundary; comparing this offset
+    // first in equals() rules that out.
+    uint32_t clauses_ofs_        = 0;
+
     uint64_t flags_ = 1ULL << TIME_SHIFT;
 
 public:
@@ -200,6 +207,8 @@ inline PackedComponent::PackedComponent(const Component& comp) {
     if (bp > 0) p++;
     bp = 0;
 
+    clauses_ofs_ = static_cast<uint32_t>(p - data_.data());
+
     if (comp.nClauses() > 0) {
         pack(p, bp, static_cast<uint32_t>(comp[cls_start]), bits_first_cls_);
         if (comp.nClauses() > 1) {
@@ -220,6 +229,7 @@ inline PackedComponent::PackedComponent(const Component& comp) {
 }
 
 inline bool PackedComponent::equals(const PackedComponent& other) const {
+    if (clauses_ofs_ != other.clauses_ofs_) return false;
     if (data_.size() != other.data_.size()) return false;
     return data_ == other.data_;
 }
