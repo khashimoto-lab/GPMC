@@ -49,9 +49,10 @@ private:
     bool solveAndSimplifyWithBVE(CNF& cnf, PrepState& st,
                                  CaDiCaL::Solver& solverB, double t0, int round) const;
 
-    // foldEquivalences closes phase 1; applyDVE is phase 3 (definable
+    // normalizeClauses closes phase 1; applyDVE is phase 3 (definable
     // variable elimination), probing candidates via detectDefinable.
-    void foldEquivalences(CNF& cnf, PrepState& st) const;
+    bool normalizeClauses(CNF& cnf, PrepState& st,
+                          std::vector<bool>* redundant = nullptr) const;
     void applyDVE(CNF& cnf, CaDiCaL::Solver& solver, PrepState& st, double t0) const;
     std::vector<int> detectDefinable(const std::vector<std::vector<int>>& clauses,
                                      const std::vector<bool>& base,

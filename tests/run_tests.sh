@@ -178,6 +178,13 @@ run_test "pp_t16  [PP+PWMC, simple]"                  "1"    --mode pwmc --prepr
 run_test "pp_t17  [PP+PWMC, unit]"                    "0.3"  --mode pwmc --preprocess "$CNF_DIR/t17_pwmc_nonproj_free.cnf"
 run_test "pp_t02  [PP+MC,  UNSAT]"                    "0"    --preprocess "$CNF_DIR/t02_mc_unsat.cnf"
 
+# Sweep may notify equivalences whose members remain in clauses or become fixed.
+# Weighted answers are from --no-preprocess with both polarities supplied.
+run_test "pp_sweep_full [PP+MC, sweep overcount]" "11008" "$CNF_DIR/repro_pp_overcount.cnf"
+run_test "pp_sweep_min  [PP+MC, minimal sweep]"   "48"    "$CNF_DIR/repro_pp_sweep_min.cnf"
+run_test "pp_sweep_wmc  [PP+WMC, fixed equiv]"    "1.96438330395995e-12" --mode wmc "$CNF_DIR/repro_pp_sweep_wmc.cnf"
+run_test "pp_sweep_pwmc [PP+PWMC, fixed equiv]"   "5.73472308456946e-07" --mode pwmc "$CNF_DIR/repro_pp_sweep_pwmc.cnf"
+
 # Equivalence elimination (phase-1 unfrozen EE): weight folding, sign
 # handling, chains, isolated classes, and projection promotion.
 # Expected values verified by hand and against --no-preprocess.

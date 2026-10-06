@@ -1,0 +1,41 @@
+c Minimized reproducer of the preprocessing overcount (from repro_pp_overcount.cnf):
+c 48 models (ganak), but 72 with preprocessing. CaDiCaL sweep in phase-1 solverA
+c notifies 17 == 14 and moves both binaries to the extension stack, then stops
+c substituting 17 early (a clause reduces to the unit -14), so (-17 -9) keeps 17
+c active while GPMC's foldEquivalences treats 17 as substituted.
+p cnf 30 35
+30 24 0
+10 14 0
+-1 -29 0
+27 12 0
+-2 -27 0
+-10 -6 -3 0
+8 19 0
+22 -25 0
+-17 -11 0
+28 13 0
+-23 2 0
+-28 -19 0
+-16 -28 0
+1 -30 0
+26 3 0
+-3 28 0
+-10 -18 0
+12 -30 0
+20 -28 0
+16 25 0
+15 -24 0
+-26 19 0
+23 21 0
+-7 29 0
+26 11 0
+-12 8 17 0
+3 7 21 0
+-15 -17 0
+18 30 0
+-8 -14 0
+19 24 0
+-21 -13 0
+-17 -9 0
+-4 -18 -19 0
+-19 1 -5 0

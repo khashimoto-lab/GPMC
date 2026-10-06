@@ -19,16 +19,25 @@ namespace gpmc {
 // Collects fixed (root-level assigned) variables from CaDiCaL's listener callback.
 struct FixedCollector : CaDiCaL::FixedAssignmentListener {
     std::vector<bool> is_fixed;  // var (0-based) is fixed
+    std::vector<int>  values;    // signed fixed value, zero if unassigned
+    bool inconsistent = false;
     std::vector<int>  lits;      // fixed literals, de-duplicated, sign kept
 
     void reset(int num_vars) {
         is_fixed.assign(num_vars, false);
+        values.assign(num_vars, 0);
+        inconsistent = false;
         lits.clear();
     }
     void notify_fixed_assignment(int lit) override {
         int v = std::abs(lit) - 1;
         assert(v >= 0 && v < (int)is_fixed.size());
-        if (is_fixed[v]) return;
+        int value = lit > 0 ? 1 : -1;
+        if (is_fixed[v]) {
+            if (values[v] != value) inconsistent = true;
+            return;
+        }
+        values[v] = value;
         is_fixed[v] = true;
         lits.push_back(lit);
     }
@@ -36,6 +45,7 @@ struct FixedCollector : CaDiCaL::FixedAssignmentListener {
 
 struct EquivCollector : CaDiCaL::Tracer {
     std::unordered_map<int, int> parent;
+    bool inconsistent = false;
 
     // Iterative (not recursive) to avoid stack overflow on long parent chains.
     int find(int l) {
@@ -54,12 +64,15 @@ struct EquivCollector : CaDiCaL::Tracer {
     void notify_equivalence(int lit1, int lit2) override {
         assert(lit1 != 0 && lit2 != 0);
         int r1 = find(lit1), r2 = find(lit2);
-        if (std::abs(r1) == std::abs(r2)) return;
+        if (std::abs(r1) == std::abs(r2)) {
+            if (r1 != r2) inconsistent = true;
+            return;
+        }
         parent[r1]  = r2;
         parent[-r1] = -r2;
     }
 
-    void clear() { parent.clear(); }
+    void clear() { parent.clear(); inconsistent = false; }
 
     std::unordered_map<int, std::vector<int>> classes() {
         std::unordered_map<int, std::vector<int>> cls;
@@ -74,13 +87,19 @@ struct EquivCollector : CaDiCaL::Tracer {
 struct ClauseGatherer : CaDiCaL::ClauseIterator {
     std::vector<std::vector<int>>& clauses;
     std::vector<bool>*             appears;
-    ClauseGatherer(std::vector<std::vector<int>>& c, std::vector<bool>* a)
-        : clauses(c), appears(a) {}
+    std::vector<bool>*             redundant;
+    ClauseGatherer(std::vector<std::vector<int>>& c, std::vector<bool>* a,
+                   std::vector<bool>* r = nullptr)
+        : clauses(c), appears(a), redundant(r) {}
     // Units are dropped: fixed variables are already tracked via fixed_col,
     // so keeping them here would double-count against foldFixedWeights.
     bool clause(const std::vector<int>& cl) override {
-        if (cl.size() < 2) return true;
+        return clause(cl, false);
+    }
+    bool clause(const std::vector<int>& cl, bool red) override {
+        if (cl.size() == 1) return true;
         clauses.push_back(cl);
+        if (redundant) redundant->push_back(red);
         if (appears)
             for (int lit : cl) (*appears)[std::abs(lit)] = true;
         return true;
@@ -136,7 +155,7 @@ struct Preprocessor::PrepState {
     SS   multiplier;
 
     // w is never null: projection-variable weights are total (invariant 1 at
-    // preprocess entry; foldEquivalences copies both polarities onto promoted
+    // preprocess entry; normalizeClauses copies both polarities onto promoted
     // survivors).
     void multiplyFactor(const SS& w) {
         assert(w);
@@ -144,48 +163,150 @@ struct Preprocessor::PrepState {
     }
 };
 
-void Preprocessor::foldEquivalences(CNF& cnf, PrepState& st) const {
-    for (auto& [root, members] : st.equiv_col.classes()) {
-#ifndef NDEBUG
-        for (int m : members)
-            assert(m <= cnf.numVars());
-#endif
-        // Pick the survivor: prefer a member that already appears in a kept
-        // clause or is fixed, else fall back to the class's root.
+bool Preprocessor::normalizeClauses(CNF& cnf, PrepState& st,
+                                    std::vector<bool>* redundant) const {
+    if (st.fixed_col.inconsistent || st.equiv_col.inconsistent) return false;
+    const int nv = cnf.numVars();
+    auto classes = st.equiv_col.classes();
+    std::vector<int> mapped(nv + 1), values(nv + 1, 0);
+    for (int v = 1; v <= nv; v++) mapped[v] = v;
+
+    if (!classes.empty()) {
+        st.appears.assign(nv + 1, false);
+        for (const auto& cl : st.clauses)
+            for (int lit : cl) st.appears[std::abs(lit)] = true;
+    }
+    // Prefer survivors already present in clauses to minimize rewriting.
+    for (auto& [root, members] : classes) {
         int surv = root;
         for (int m : members)
-            if (st.appears[m] || st.fixed_col.is_fixed[m - 1]) { surv = m; break; }
+            if (st.appears[m]) { surv = m; break; }
+        int rs = st.equiv_col.find(surv);
+        for (int m : members)
+            mapped[m] = (st.equiv_col.find(m) > 0) == (rs > 0) ? surv : -surv;
+    }
+    auto map_lit = [&](int lit) {
+        return lit > 0 ? mapped[lit] : -mapped[-lit];
+    };
+    std::vector<int> units;
+    auto assign = [&](int lit) {
+        int v = std::abs(lit), value = lit > 0 ? 1 : -1;
+        if (values[v]) return values[v] == value;
+        values[v] = value;
+        units.push_back(lit);
+        return true;
+    };
+    for (int lit : st.fixed_col.lits)
+        if (!assign(map_lit(lit))) return false;
+    units.clear();  // These values are applied during the initial rewrite.
 
+    // Mark duplicates without changing either clause or literal order.
+    // cl[0..size) holds exactly the marked literals, so unmarking is local.
+    std::vector<char> marks(2 * nv + 1, 0);
+    size_t kept = 0;
+    for (size_t i = 0; i < st.clauses.size(); i++) {
+        auto& cl = st.clauses[i];
+        size_t size = 0;
+        bool satisfied = false;
+        for (int lit : cl) {
+            int l = map_lit(lit), value = values[std::abs(l)];
+            if ((l > 0 ? value : -value) > 0 || marks[nv - l]) {
+                satisfied = true;
+                break;
+            }
+            if (value || marks[nv + l]) continue;
+            marks[nv + l] = 1;
+            cl[size++] = l;
+        }
+        for (size_t j = 0; j < size; j++) marks[nv + cl[j]] = 0;
+        if (satisfied) continue;
+        if (!size) return false;
+        cl.resize(size);
+        if (redundant) (*redundant)[kept] = (*redundant)[i];
+        if (kept != i) st.clauses[kept] = std::move(cl);
+        kept++;
+    }
+    st.clauses.resize(kept);
+    if (redundant) redundant->resize(kept);
+
+    // Rewriting rarely leaves a unit; build occurrence lists only when it does.
+    bool has_unit = false;
+    for (const auto& cl : st.clauses)
+        if (cl.size() == 1) { has_unit = true; break; }
+    std::vector<bool> satisfied(kept, false);
+    if (has_unit) {
+        // Each occurrence is visited at most once by unit propagation.
+        std::vector<std::vector<size_t>> occurs(2 * nv + 1);
+        // XOR tracks the last non-false literal when the remaining count is one.
+        std::vector<int> remaining(kept), last(kept, 0);
+        for (size_t i = 0; i < kept; i++) {
+            const auto& cl = st.clauses[i];
+            remaining[i] = (int)cl.size();
+            for (int lit : cl) {
+                occurs[nv + lit].push_back(i);
+                last[i] ^= lit;
+            }
+            if (cl.size() == 1 && !assign(cl[0])) return false;
+        }
+        for (size_t pos = 0; pos < units.size(); pos++) {
+            int lit = units[pos];
+            for (size_t i : occurs[nv + lit]) satisfied[i] = true;
+            for (size_t i : occurs[nv - lit]) {
+                if (satisfied[i]) continue;
+                last[i] ^= -lit;
+                if (--remaining[i] == 0) return false;
+                if (remaining[i] == 1 && !assign(last[i])) return false;
+            }
+        }
+    }
+
+    for (auto& [root, members] : classes) {
+        int surv = std::abs(mapped[root]);
+        if (values[surv]) continue;  // Fixed classes keep each member's own weight.
         bool any_proj = false;
         for (int m : members)
             if (cnf.isProj(m - 1)) { any_proj = true; break; }
-        if (any_proj)
-            cnf.setProjected(surv - 1);
-
-        if (st.weighted) {
-            auto fold = [&](Lit from, Lit to) {
-                if (!cnf.hasWeight(from)) return;
-                if (cnf.hasWeight(to))
-                    cnf.setWeight(to, cnf.weight(to)->mul(*cnf.weight(from)));
-                else
-                    cnf.setWeight(to, cnf.weight(from)->dup());
-            };
-            int rs = st.equiv_col.find(surv);
-            for (int m : members) {
-                if (m == surv) continue;
-                int rm = st.equiv_col.find(m);
-                bool same = (rm > 0) == (rs > 0);
-                fold(mkLit(m - 1, false), mkLit(surv - 1, !same));
-                fold(mkLit(m - 1, true),  mkLit(surv - 1,  same));
+        if (any_proj) cnf.setProjected(surv - 1);
+        for (int m : members) {
+            if (m == surv) continue;
+            if (st.weighted) {
+                for (bool neg : {false, true}) {
+                    Lit from = mkLit(m - 1, neg);
+                    Lit to = mkLit(surv - 1, neg != (mapped[m] < 0));
+                    if (!cnf.hasWeight(from)) continue;
+                    cnf.setWeight(to, cnf.hasWeight(to)
+                        ? cnf.weight(to)->mul(*cnf.weight(from)) : cnf.weight(from)->dup());
+                }
             }
+            st.substituted[m - 1] = true;
         }
-
-        for (int m : members)
-            if (m != surv)
-                st.substituted[m - 1] = true;
     }
-
+    for (int v = 1; v <= nv; v++) {
+        int value = values[std::abs(mapped[v])];
+        if (mapped[v] < 0) value = -value;
+        if (value) st.fixed_col.notify_fixed_assignment(value > 0 ? v : -v);
+    }
     st.equiv_col.clear();
+
+    st.appears.assign(nv + 1, false);
+    size_t out = 0;
+    for (size_t i = 0; i < kept; i++) {
+        if (satisfied[i]) continue;
+        auto& cl = st.clauses[i];
+        size_t size = 0;
+        for (int lit : cl) {
+            if (values[std::abs(lit)]) continue;
+            cl[size++] = lit;
+            st.appears[std::abs(lit)] = true;
+        }
+        cl.resize(size);
+        if (redundant) (*redundant)[out] = (*redundant)[i];
+        if (out != i) st.clauses[out] = std::move(cl);
+        out++;
+    }
+    st.clauses.resize(out);
+    if (redundant) redundant->resize(out);
+    return !st.fixed_col.inconsistent;
 }
 
 void Preprocessor::foldFixedWeights(const CNF& cnf, PrepState& st) const {
@@ -473,11 +594,19 @@ bool Preprocessor::simplifyWithoutBVE(CNF& cnf, PrepState& st,
     }
 
     solverB.connect_fixed_listener(&st.fixed_col);
-    st.appears.assign(cnf.numVars() + 1, false);
-    ClauseForwarder fwd(solverB, &st.appears);
-    solverA.traverse_clauses_with_elite_learnts(fwd);
-
-    foldEquivalences(cnf, st);
+    st.clauses.clear();
+    std::vector<bool> redundant;
+    ClauseGatherer gatherer(st.clauses, nullptr, &redundant);
+    solverA.traverse_clauses_with_elite_learnts(gatherer);
+    if (!normalizeClauses(cnf, st, &redundant)) {
+        solverB.disconnect_fixed_listener();
+        return false;
+    }
+    ClauseForwarder fwd(solverB);
+    for (size_t i = 0; i < st.clauses.size(); i++)
+        fwd.clause(st.clauses[i], redundant[i]);
+    // finalize gathers its own copy; don't hold this one through phase 2/3.
+    std::vector<std::vector<int>>().swap(st.clauses);
 
     return true;
 }
@@ -520,11 +649,15 @@ void Preprocessor::finalize(CNF& cnf, PrepState& st,
                             std::unique_ptr<CaDiCaL::Solver> solverB,
                             PreprocessingResult& res) const {
     st.clauses.clear();
-    st.appears.assign(cnf.numVars() + 1, false);
-    ClauseGatherer gatherer(st.clauses, &st.appears);
+    ClauseGatherer gatherer(st.clauses, nullptr);  // normalizeClauses rebuilds appears
     solverB->traverse_clauses(gatherer);
     solverB->disconnect_fixed_listener();
     solverB.reset();
+
+    if (!normalizeClauses(cnf, st)) {
+        res.sat = false;
+        return;
+    }
 
     res.fixed_vars = (int)st.fixed_col.lits.size();
     foldFixedWeights(cnf, st);
