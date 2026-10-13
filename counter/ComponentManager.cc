@@ -50,6 +50,10 @@ int ComponentManager::splitComponent(const Glucose::vec<Glucose::lbool>& assigns
 
     Component& super = *comp_stack_.back();
     analyzer_.setupContext(super, assigns);
+    // Only the branch's first split counts: countExists() re-splits a
+    // component under the same Decision, and those entries go below it.
+    if (topDecision().splitTime() == UINT64_MAX)
+        topDecision().setSplitTime(cache_.clock());
 
     int new_count = 0;
 
@@ -143,7 +147,7 @@ void ComponentManager::storeZeroCount(CacheEntryID id) {
 
 void ComponentManager::removeCachePollutions() {
     if (!comp_stack_.empty())
-        cache_.cleanDescendants(comp_stack_.back()->id(), topDecision().numComps());
+        cache_.cleanDescendants(comp_stack_.back()->id(), topDecision().splitTime());
 }
 
 }

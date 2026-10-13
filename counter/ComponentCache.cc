@@ -39,6 +39,7 @@ CacheEntryID ComponentCache::lookup(const PackedComponent& pc) {
 CacheEntryID ComponentCache::newEntry(PackedComponent&& pc) {
     CacheEntryID id = allocEntry();
     entries_[id].initAs(std::move(pc));
+    entries_[id].setCreatedTime(current_time_++);
     total_memory_ += entries_[id].sizeInBytes();
     evictIfNeeded();
     return id;
@@ -82,19 +83,22 @@ void ComponentCache::addDescendant(CacheEntryID parent, CacheEntryID child) {
     entries_[parent].setFirstDescendant(child);
 }
 
-void ComponentCache::cleanDescendants(CacheEntryID id, int n) {
-    if (entries_[id].isFree() || n <= 0) return;
-    num_pollution_cleans_++;
-
+void ComponentCache::cleanDescendants(CacheEntryID id, uint64_t since) {
+    if (entries_[id].isFree()) return;
     CacheEntryID child = entries_[id].firstDescendant();
-    int remaining = n;
-    while (child != INVALID_ENTRY && remaining > 0) {
+    if (child != INVALID_ENTRY && entries_[child].createdTime() >= since)
+        num_pollution_cleans_++;
+
+    while (child != INVALID_ENTRY && entries_[child].createdTime() >= since) {
         CacheEntryID next = entries_[child].nextSibling();
         cleanPollutions(child);
         child = next;
-        remaining--;
     }
     entries_[id].setFirstDescendant(child);
+#ifndef NDEBUG
+    for (CacheEntryID c = child; c != INVALID_ENTRY; c = entries_[c].nextSibling())
+        assert(entries_[c].createdTime() < since);
+#endif
 }
 
 void ComponentCache::evictIfNeeded() {
@@ -184,28 +188,36 @@ void ComponentCache::removeFromDescendantsTree(CacheEntryID id) {
     CacheEntryID father = entries_[id].father();
     assert(father != INVALID_ENTRY && !entries_[father].isFree());
 
+    // Splice id's children into id's place in father's list (not at its
+    // head): children are created after id, so this keeps the entries created
+    // by father's current branch a prefix of the list (see cleanDescendants).
+    CacheEntryID first = entries_[id].firstDescendant();
+    CacheEntryID after = entries_[id].nextSibling();
+    CacheEntryID replacement = after;
+    if (first != INVALID_ENTRY) {
+        replacement = first;
+        CacheEntryID last = first;
+        for (CacheEntryID c = first; c != INVALID_ENTRY; c = entries_[c].nextSibling()) {
+            entries_[c].setFather(father);
+            last = c;
+        }
+        entries_[last].setNextSibling(after);
+    }
+    entries_[id].setFirstDescendant(INVALID_ENTRY);
+
     if (entries_[father].firstDescendant() == id) {
-        entries_[father].setFirstDescendant(entries_[id].nextSibling());
+        entries_[father].setFirstDescendant(replacement);
     } else {
         CacheEntryID sib = entries_[father].firstDescendant();
         while (sib != INVALID_ENTRY) {
             CacheEntryID next_sib = entries_[sib].nextSibling();
             if (next_sib == id) {
-                entries_[sib].setNextSibling(entries_[id].nextSibling());
+                entries_[sib].setNextSibling(replacement);
                 break;
             }
             sib = next_sib;
         }
-    }
-
-    CacheEntryID child = entries_[id].firstDescendant();
-    entries_[id].setFirstDescendant(INVALID_ENTRY);
-    while (child != INVALID_ENTRY) {
-        CacheEntryID next_child = entries_[child].nextSibling();
-        entries_[child].setFather(father);
-        entries_[child].setNextSibling(entries_[father].firstDescendant());
-        entries_[father].setFirstDescendant(child);
-        child = next_child;
+        assert(sib != INVALID_ENTRY);
     }
 }
 

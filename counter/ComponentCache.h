@@ -28,13 +28,19 @@ public:
     bool hasEntry(CacheEntryID id) const {
         return id < entries_.size() && !entries_[id].isFree();
     }
+    uint64_t clock() const { return current_time_; }
     void setDeletePermitted(CacheEntryID id, bool b) {
         entries_[id].setDeletePermitted(b);
     }
 
     // descendants tree and garbage collection
     void addDescendant(CacheEntryID parent, CacheEntryID child);
-    void cleanDescendants(CacheEntryID id, int n);
+    // Frees (with their subtrees) the children of id created at or after
+    // `since`, which must be the clock at the first split of id's current
+    // branch. Those children form a prefix of id's list: new children are
+    // prepended, a finished entry gets no new ones, and eviction splices an
+    // entry's children (all younger than it) into its place.
+    void cleanDescendants(CacheEntryID id, uint64_t since);
     void evictIfNeeded();
 
     void printStats() const;

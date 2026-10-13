@@ -109,6 +109,7 @@ class CachedBucket : public PackedComponent {
     CacheEntryID first_descendant_ = INVALID_ENTRY;
     CacheEntryID next_sibling_     = INVALID_ENTRY;
     CacheEntryID next_in_bucket_   = INVALID_ENTRY;
+    uint64_t     created_time_     = 0;
     bool         is_free_          = true;
 
 public:
@@ -146,6 +147,9 @@ public:
     void setFirstDescendant(CacheEntryID id) { first_descendant_ = id; }
     void setNextSibling(CacheEntryID id)     { next_sibling_     = id; }
     void setNextInBucket(CacheEntryID id)    { next_in_bucket_   = id; }
+
+    uint64_t createdTime() const        { return created_time_; }
+    void setCreatedTime(uint64_t t)     { created_time_ = t; }
 
     size_t sizeInBytes() const {
         size_t base = sizeof(CachedBucket) + data_.size() * sizeof(uint32_t);

@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <vector>
 
 #include "counter/Component.h"
@@ -12,7 +13,8 @@ class Decision {
     int  comp_base_ = 0;
     int  comp_top_  = 0;
 
-    int  num_comps_ = 0;   // how many components this branch split into (fixed once set)
+    // cache clock when this branch split; entries it created are stamped >= this
+    uint64_t split_time_ = UINT64_MAX;
     bool cur_branch_     = false;
 
     // per-branch (false/true) model count; null == unset (tracked by hasmodel_)
@@ -29,16 +31,17 @@ public:
           dvar_in_comp_(ndvars, 0) {}
 
     bool isFirstBranch() const { return !cur_branch_; }
-    void changeBranch()        { cur_branch_ = true; num_comps_ = 0; }
+    void changeBranch()        { cur_branch_ = true; split_time_ = UINT64_MAX; }
     int  curBranch()    const  { return static_cast<int>(cur_branch_); }
 
     int  compTop()             const { return comp_top_; }
-    void setCompTop(int e)           { comp_top_ = e; num_comps_ = comp_top_ - comp_base_; }
+    void setCompTop(int e)           { comp_top_ = e; }
     
     // if true, top of comp_stack is an unprocessed split component of this decision
     bool hasUnprocessedComp()  const { return comp_base_ < comp_top_; }
     int  numUnprocessedComp()  const { return comp_top_ - comp_base_; }
-    int  numComps()            const { return num_comps_; }
+    uint64_t splitTime()       const { return split_time_; }
+    void setSplitTime(uint64_t t)    { split_time_ = t; }
     void nextComp()                  { comp_top_--; }
 
     void increaseModels(const Semiring& val) {
